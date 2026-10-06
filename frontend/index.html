@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=overlays-content" />
+    <meta name="theme-color" content="#0e0f12" />
+    <meta name="color-scheme" content="dark light" />
+    <script>
+      (() => {
+        try {
+          const theme = localStorage.getItem("novelai-lan-studio-theme-v1") === "light" ? "light" : "dark";
+          const font = localStorage.getItem("novelai-lan-studio-font-v1") || "system";
+          const allowedFonts = new Set(["system", "noto-sans-kr", "nanum-gothic", "gowun-dodum", "ibm-plex-sans-kr", "noto-serif-kr", "nanum-myeongjo", "gowun-batang", "hahmlet"]);
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.dataset.font = allowedFonts.has(font) ? font : "system";
+          document.documentElement.style.colorScheme = theme;
+          document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "light" ? "#f3eee4" : "#0e0f12");
+        } catch {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
+    <title>NovelAI LAN Studio</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,126 @@
+/* Library views: 인물(PresetsView), 통계(StatsView), 생성 대기열(JobsPanel). */
+
+/* ---------- 인물 ---------- */
+.presets-view .presets-layout {
+  display: grid; grid-template-columns: minmax(240px, 300px) minmax(0, 1fr); gap: var(--x4); align-items: start;
+}
+.presets-view .presets-list-pane {
+  position: sticky; top: calc(var(--header-height) + var(--x4));
+  max-height: calc(100dvh - var(--header-height) - var(--x8)); overflow: auto; padding: var(--x2);
+}
+.presets-view .presets-list { gap: var(--x0_5); }
+.presets-view .presets-list-item {
+  width: 100%; min-height: 56px; padding: var(--x2_5) var(--x3); border: 0; border-radius: var(--r2_5);
+  background: transparent; color: inherit; text-align: left;
+}
+.presets-view .presets-list-item:hover { background: var(--bg-neutral-weak); }
+.presets-view .presets-list-item[aria-current="true"] { background: var(--bg-neutral-weak-pressed); }
+.presets-view .presets-list-item .list-item-title { font-weight: var(--w-bold); }
+.presets-view .presets-list-empty { padding: var(--x4) var(--x3); }
+
+.presets-view .presets-editor-pane { min-height: 360px; }
+.presets-view .presets-editor-header { display: flex; align-items: center; gap: var(--x2); min-height: 36px; }
+.presets-view .presets-editor-header h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.presets-view .presets-back { display: none; margin-left: calc(var(--x2) * -1); }
+.presets-view .presets-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--x4); }
+.presets-view .presets-tag-input {
+  display: flex; align-items: center; min-width: 0; padding-left: var(--x3); border-radius: var(--r2);
+  background: var(--bg-neutral-weak); color: var(--fg-neutral-subtle);
+}
+.presets-view .presets-tag-input:focus-within { box-shadow: inset 0 0 0 1.5px var(--stroke-brand); }
+.presets-view .presets-tag-input input { padding-left: var(--x1); background: transparent; }
+.presets-view .presets-tag-input input:focus { box-shadow: none; }
+.presets-view .presets-prompt { min-height: 200px; }
+.presets-view .presets-negative { min-height: 104px; }
+.presets-view .presets-actions .presets-delete { margin-right: auto; color: var(--fg-critical); }
+.presets-view .presets-actions .presets-delete:hover:not(:disabled) { color: var(--fg-critical); background: var(--bg-critical-weak); }
+.presets-view .presets-editor-empty { min-height: 320px; align-content: center; }
+
+@media (max-width: 767px) {
+  .presets-view .presets-layout { grid-template-columns: minmax(0, 1fr); }
+  .presets-view .presets-list-pane { position: static; max-height: none; overflow: visible; }
+  .presets-view[data-editor-open="true"] .presets-header,
+  .presets-view[data-editor-open="true"] .presets-list-pane,
+  .presets-view[data-editor-open="false"] .presets-editor-pane { display: none; }
+  .presets-view .presets-back { display: inline-grid; }
+  .presets-view .presets-close { display: none; }
+  .presets-view .presets-editor-pane { min-height: 0; }
+  .presets-view .presets-fields { gap: var(--x3); }
+}
+
+/* ---------- 통계 ---------- */
+.stats-view .stats-tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--x3); }
+.stats-view .stats-tile {
+  display: grid; align-content: space-between; gap: var(--x2); min-width: 0; min-height: 96px;
+  padding: var(--x4); border-radius: var(--r3); background: var(--bg-layer-default);
+}
+.stats-view .stats-tile-label { font-size: var(--t3); line-height: var(--lh3); color: var(--fg-neutral-muted); }
+.stats-view .stats-tile-value {
+  font-size: var(--t9); line-height: var(--lh9); font-weight: var(--w-bold); letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
+}
+.stats-view .stats-bars { display: grid; gap: var(--x3); }
+.stats-view .stats-bar-row { display: grid; grid-template-columns: 64px minmax(0, 1fr) 56px; align-items: center; gap: var(--x3); }
+.stats-view .stats-bar-label { display: flex; align-items: baseline; gap: var(--x1_5); font-size: var(--t3); font-weight: var(--w-bold); }
+.stats-view .stats-bar-label small { font-size: var(--t2); font-weight: var(--w-regular); color: var(--fg-neutral-subtle); font-variant-numeric: tabular-nums; }
+.stats-view .stats-bar-track { display: block; height: 10px; border-radius: var(--r-full); background: var(--bg-neutral-weak); overflow: hidden; }
+.stats-view .stats-bar-fill { display: block; height: 100%; border-radius: var(--r-full); background: var(--bg-brand-solid); transition: width var(--duration-base) var(--ease-standard); }
+.stats-view .stats-bar-count { text-align: right; font-size: var(--t3); font-weight: var(--w-bold); font-variant-numeric: tabular-nums; }
+
+@media (max-width: 767px) {
+  .stats-view .stats-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--x2); }
+  .stats-view .stats-tile:first-child { grid-column: 1 / -1; }
+  .stats-view .stats-tile { min-height: 84px; padding: var(--x3_5); }
+  .stats-view .stats-tile-value { font-size: var(--t7); line-height: var(--lh7); }
+  .stats-view .stats-bar-row { grid-template-columns: 56px minmax(0, 1fr) 44px; gap: var(--x2_5); }
+}
+
+/* ---------- 생성 대기열 (floating) ---------- */
+.jobs-panel {
+  position: fixed; z-index: 50;
+  right: calc(var(--x4) + env(safe-area-inset-right, 0px));
+  bottom: calc(var(--floating-bottom-offset, env(safe-area-inset-bottom, 0px)) + var(--x4));
+  display: flex; justify-content: flex-end; max-width: calc(100vw - var(--x8));
+  pointer-events: none;
+}
+.jobs-panel > * { pointer-events: auto; }
+.jobs-panel .jobs-pill {
+  display: inline-flex; align-items: center; gap: var(--x2); height: 40px; padding: 0 var(--x4) 0 var(--x3);
+  border: 0; border-radius: var(--r-full); background: var(--bg-layer-floating); color: var(--fg-neutral);
+  font-size: var(--t3); font-weight: var(--w-bold); white-space: nowrap; font-variant-numeric: tabular-nums;
+  box-shadow: var(--shadow-floating); animation: fade-in var(--duration-base) var(--ease-enter);
+}
+.jobs-panel .jobs-pill:hover { background: var(--bg-neutral-weak); }
+.jobs-panel .spinner { width: 14px; height: 14px; border-width: 2px; }
+.jobs-panel .jobs-card {
+  display: grid; gap: var(--x1); width: min(380px, calc(100vw - var(--x8))); max-height: min(60dvh, 520px); overflow: auto;
+  padding: var(--x2); border-radius: var(--r4); background: var(--bg-layer-floating); box-shadow: var(--shadow-floating);
+  animation: dialog-in var(--duration-base) var(--ease-enter);
+}
+.jobs-panel .jobs-card-header { display: flex; align-items: center; gap: var(--x2); padding: var(--x1) var(--x1) var(--x1) var(--x3); }
+.jobs-panel .jobs-card-header h2 { font-size: var(--t4); line-height: var(--lh5); }
+.jobs-panel .jobs-card-header .counter { flex: 1 1 auto; min-width: 0; }
+.jobs-panel .jobs-list { display: grid; gap: var(--x0_5); }
+.jobs-panel .jobs-item { display: grid; gap: var(--x1_5); min-width: 0; padding: var(--x2) var(--x3); border-radius: var(--r2_5); }
+.jobs-panel .jobs-item.running { background: var(--bg-neutral-weak); }
+.jobs-panel .jobs-item-main { display: flex; align-items: center; gap: var(--x2); min-width: 0; min-height: 32px; }
+.jobs-panel .jobs-item-meta { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t2); color: var(--fg-neutral-subtle); font-variant-numeric: tabular-nums; }
+.jobs-panel .jobs-cancel { flex: 0 0 auto; color: var(--fg-critical); }
+.jobs-panel .jobs-cancel:hover:not(:disabled) { color: var(--fg-critical); background: var(--bg-critical-weak); }
+.jobs-panel .jobs-cancel:disabled { color: var(--fg-disabled); background: transparent; }
+.jobs-panel .jobs-progress { display: grid; gap: var(--x1); }
+.jobs-panel .jobs-progress-track { display: block; height: 4px; border-radius: var(--r-full); background: var(--bg-neutral-weak-pressed); overflow: hidden; }
+.jobs-panel .jobs-progress-fill { display: block; height: 100%; border-radius: var(--r-full); background: var(--bg-brand-solid); transition: width var(--duration-base) var(--ease-standard); }
+.jobs-panel .jobs-progress-text { font-size: var(--t2); line-height: var(--lh3); color: var(--fg-neutral-muted); font-variant-numeric: tabular-nums; }
+.jobs-panel .jobs-item-error,
+.jobs-panel .jobs-error {
+  margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: var(--t2); line-height: var(--lh3); color: var(--fg-critical);
+}
+.jobs-panel .jobs-error { padding: 0 var(--x3); }
+
+@media (max-width: 767px) {
+  .jobs-panel { right: calc(var(--x3) + env(safe-area-inset-right, 0px)); max-width: calc(100vw - var(--x6)); }
+  .jobs-panel .jobs-card { width: calc(100vw - var(--x6)); max-height: min(55dvh, 480px); }
+  .jobs-panel .jobs-pill { height: 44px; }
+}

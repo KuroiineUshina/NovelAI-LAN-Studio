@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NovelAI LAN Studio</string>
+    <string name="connection_eyebrow">ANDROID COMPANION</string>
+    <string name="connection_title">PC 스튜디오에 연결</string>
+    <string name="connection_description">같은 Wi‑Fi에서는 LAN 주소를, 다른 회선에서는 PC와 휴대폰을 Tailscale에 연결한 뒤 100.x.x.x 주소를 사용하세요.</string>
+    <string name="server_address_label">PC에 표시된 모바일 주소</string>
+    <string name="server_address_hint">http://192.168.0.2:8787</string>
+    <string name="default_server_url">http://192.168.0.2:8787</string>
+    <string name="connect">연결하기</string>
+    <string name="open_offline_gallery">오프라인 갤러리 열기</string>
+    <string name="open_standalone">모바일 단독모드 열기</string>
+    <string name="standalone_load_failed">모바일 단독모드 화면을 열지 못했습니다.</string>
+    <string name="api_profile_required">PC에서 승인받은 API 프로필이 있어야 단독모드를 사용할 수 있습니다.</string>
+    <string name="restore_default">현재 PC 주소 복원</string>
+    <string name="connecting">PC 서버를 확인하는 중…</string>
+    <string name="connection_notice">앱은 사설 IPv4 또는 Tailscale 100.64–127.x.x 주소에만 연결합니다. 일반 인터넷 주소는 차단됩니다.</string>
+    <string name="invalid_address">사설 주소 또는 Tailscale 100.64–127.x.x 주소를 입력하세요.</string>
+    <string name="server_unreachable">PC 서버에 연결하지 못했습니다. PC 앱, LAN 또는 Tailscale 연결 상태를 확인하세요.</string>
+    <string name="offline_gallery_empty">아직 기기에 동기화된 이미지가 없습니다.</string>
+    <string name="offline_cache_updated">오프라인 갤러리 %1$d장을 동기화했습니다.</string>
+    <string name="wrong_server">NovelAI LAN Studio 서버가 아닌 주소입니다.</string>
+    <string name="change_address_hint">Android 뒤로가기를 누르면 서버 주소 화면으로 돌아옵니다.</string>
+    <string name="download_started">다운로드 폴더에 저장을 시작했습니다.</string>
+    <string name="download_failed">다운로드를 시작하지 못했습니다.</string>
+    <string name="copy_done">생성정보 포함해서 복사했어요</string>
+    <string name="copy_done_removed">생성정보 없이 복사했어요</string>
+    <string name="copy_failed">이미지를 복사하지 못했어요</string>
+    <string name="cached_download_complete">캐시 이미지를 다운로드 폴더에 저장했습니다.</string>
+    <string name="download_blocked">현재 PC 서버 이외의 다운로드는 차단했습니다.</string>
+    <string name="storage_permission_needed">파일을 저장하려면 저장소 권한이 필요합니다.</string>
+    <string name="choose_image">이미지 선택</string>
+    <string name="app_icon_description">NovelAI LAN Studio 앱 아이콘</string>
+</resources>

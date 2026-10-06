@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Studio · isolated design QA</title></head>
+<body><div id="root"></div><script type="module">
+import { DEFAULT_GENERATION_PARAMETERS } from '/src/types.ts';
+// Isolated fixture: ALL fetches terminate here, never at a real API.
+window.__qaRequests = [];
+window.__qaErrors = [];
+window.__qaJobs = [];
+window.__qaImages = new URLSearchParams(location.search).has('images') ? [1,2].map(i => ({id:'image-'+i,width:1024,height:1024,content_url:'/app-icon.png?image='+i,thumbnail_url:'/app-icon.png?image='+i,download_url:'/app-icon.png',tags:[],seed:i,created_at:'2026-09-08T00:00:00Z',settings:DEFAULT_GENERATION_PARAMETERS,prompt:'검증용 장면',mode:'txt2img',folder:'temporary',is_favorite:false})) : [];
+window.addEventListener('error', e => window.__qaErrors.push(e.message));
+window.addEventListener('unhandledrejection', e => window.__qaErrors.push(String(e.reason)));
+let draft = { schema_version:4, quality_prompt:'', description_prompt:'햇살이 비치는 창가, 편안한 오후의 한 장면', quality_preset_id:null, quality_negative_prompt:'', description_negative_prompt:'', nsfw_enabled:false, character_preset_ids:[], model:'nai-diffusion-5-full', parameters:DEFAULT_GENERATION_PARAMETERS };
+window.fetch = async (input, init = {}) => {
+ const path = new URL(String(input), location.href).pathname;
+ window.__qaRequests.push({path, method:init.method || 'GET',body:init.body});
+ let data = {items:[], total:0, page:1, page_size:24};
+ if(path === '/api/status') data = { name:'NovelAI LAN Studio', version:'design QA', has_token:true, admin_available:false, device_authorized:true, device_approval_required:false, pending_device_count:0, pending_api_profile_transfer_count:0, lan_urls:['http://192.168.0.2:8787'], tailscale_urls:[], models:[{id:'nai-diffusion-5-full', label:'NovelAI V5', family:'v5',max_characters:6}], security_notice:'승인된 기기만 연결할 수 있습니다.' };
+ if(path === '/api/status' && new URLSearchParams(location.search).has('pending')) data={...data,admin_available:true,pending_device_count:2,pending_api_profile_transfer_count:1};
+ if(path === '/api/generation-draft/sync') { if(init.method === 'PUT') draft = JSON.parse(init.body).draft || draft; data = {draft, revision:1, client_id:'qa'}; }
+ if(path === '/api/anlas') data = {available:true, active:true, tier:3,tier_name:'Opus',subscription_anlas:10000,paid_anlas:0,remaining_anlas:10000,usage_percent:15};
+ if(path === '/api/stats') data = {lifetime:2,today:2,last_7_days:2,temporary:2,favorites:0,daily:[{date:'2026-09-08',count:2}]};
+ if(path === '/api/presets') data = {items:['인물 A','인물 B','인물 C'].map((name,i)=>({id:'qa-'+i,name,tag_id:'qa-'+i,tag_name:name,subject_type:'other',prompt:'테스트 외형',negative_prompt:'',sort_order:i}))};
+ if(path === '/api/images') data = {items:window.__qaImages,total:window.__qaImages.length,page:1,page_size:24};
+ if(path === '/api/jobs') {
+   if(init.method === 'POST') { const request=JSON.parse(init.body); const job={id:'qa-job-'+window.__qaJobs.length,status:'running',request,completed_requests:0,output_count:0,correlation_id:'QA',created_at:'2026-09-08T00:00:00Z'}; window.__qaJobs.unshift(job); data=job; }
+   else data={items:window.__qaJobs};
+ }
+ if(path.endsWith('/cancel')) { const id=path.split('/')[3]; const job=window.__qaJobs.find(job=>job.id===id); if(job) job.cancel_requested=true; data={cancel_requested:true}; }
+ if(path === '/api/jobs' && new URLSearchParams(location.search).has('jobs')) data = {items:Array.from({length:5},(_,i)=>({id:'qa-job-'+i,status:'failed',request:{mode:'txt2img'},created_at:'2026-09-07T09:00:00Z',error_message:'테스트 오류 메시지 — 긴 작업 상태도 화면 안에서 확인할 수 있어야 합니다.',correlation_id:'qa-only'}))};
+ return new Response(JSON.stringify(data), {status:200,headers:{'Content-Type':'application/json'}});
+};
+await import('/src/main.tsx');
+</script></body></html>

@@ -1,0 +1,87 @@
+/* Settings + device approval screens. Scoped to .settings-view / .device-approval-screen. */
+
+/* ---------- Settings page ---------- */
+.settings-view { gap: var(--x4); }
+.settings-view .panel-header { margin-bottom: var(--x1); }
+.settings-view .list-item-actions .button.small { min-height: 32px; }
+
+.settings-view .settings-select { width: auto; min-width: 168px; max-width: 220px; }
+
+/* Switch row: label on the left, track on the right */
+.settings-view .settings-switch { display: flex; flex-direction: row-reverse; justify-content: space-between; gap: var(--x3); width: 100%; min-height: 32px; }
+.settings-view .settings-switch .switch-label { flex: 1 1 auto; min-width: 0; }
+.settings-view .settings-switch .switch-label strong { font-size: var(--t4); font-weight: var(--w-medium); }
+.settings-view .settings-switch .switch-label small { line-height: var(--lh3); overflow-wrap: anywhere; }
+
+.settings-view .settings-summary { display: flex; align-items: center; gap: var(--x2); color: var(--fg-neutral-muted); font-size: var(--t3); line-height: var(--lh4); padding: var(--x1) 0; }
+.settings-view .settings-success { color: var(--fg-positive); font-size: var(--t3); }
+.settings-view .list-item-detail.settings-success { font-size: var(--t2); }
+.settings-view .settings-warning-text { color: var(--fg-warning); }
+.settings-view .settings-note { margin-top: var(--x2); }
+.settings-view .settings-callout { margin-top: var(--x3); }
+.settings-view .settings-empty { padding: var(--x3) 0; }
+.settings-view .error-message { margin-top: var(--x2); }
+.settings-view .settings-panel-footer { margin-top: var(--x3); }
+.settings-view .settings-subheading { margin: var(--x4) 0 0; font-size: var(--t3); color: var(--fg-neutral-subtle); font-weight: var(--w-bold); }
+
+/* Inline token form */
+.settings-view .settings-inline-form { display: flex; gap: var(--x2); margin-top: var(--x1); }
+.settings-view .settings-inline-form input { flex: 1 1 auto; }
+.settings-view .settings-inline-form .button { flex: 0 0 auto; }
+
+/* Copyable command */
+.settings-view .settings-command { display: flex; align-items: flex-start; gap: var(--x2); margin: 0 0 var(--x2); padding: var(--x2) var(--x2) var(--x2) var(--x3); border-radius: var(--r2); background: var(--bg-neutral-weak); }
+.settings-view .settings-command code { flex: 1 1 auto; min-width: 0; padding-top: var(--x1); font-size: var(--t2); line-height: var(--lh3); color: var(--fg-neutral); overflow-wrap: anywhere; white-space: pre-wrap; user-select: all; }
+
+/* Row icon */
+.settings-view .settings-row-icon { display: inline-grid; place-items: center; flex: 0 0 36px; width: 36px; height: 36px; border-radius: var(--r2_5); background: var(--bg-neutral-weak); color: var(--fg-neutral-muted); }
+.settings-view .settings-row-icon svg { width: 18px; height: 18px; }
+.settings-view .settings-row-icon.pending { background: var(--bg-warning-weak); color: var(--fg-warning); }
+.settings-view .icon-button.settings-approve:hover:not(:disabled) { color: var(--fg-positive); background: var(--bg-positive-weak); }
+
+.settings-view .settings-verification-code { font-family: var(--font-mono); font-weight: var(--w-bold); letter-spacing: 0.12em; color: var(--fg-neutral); font-variant-numeric: tabular-nums; }
+.settings-view .settings-verification-code.small { font-size: var(--t3); }
+.settings-view .settings-code-row { display: flex; align-items: center; justify-content: space-between; gap: var(--x3); padding: var(--x3) var(--x4); border-radius: var(--r2_5); background: var(--bg-neutral-weak); color: var(--fg-neutral-muted); font-size: var(--t3); }
+.settings-view .settings-code-row .settings-verification-code { font-size: var(--t7); }
+
+/* Disclosure styled as a list row */
+.settings-view .settings-row-disclosure > summary { min-height: 56px; padding: var(--x3) 0; font-weight: var(--w-regular); }
+.settings-view .settings-disclosure-body { display: grid; gap: var(--x2); padding: 0 0 var(--x3); }
+.settings-view .settings-button-row { justify-content: flex-end; }
+
+/* Mobile profile list */
+.settings-view .settings-profile-select { display: flex; align-items: center; gap: var(--x3); flex: 1 1 auto; min-width: 0; padding: 0; border: 0; background: transparent; text-align: left; }
+.settings-view .settings-profile-mark { display: inline-grid; place-items: center; flex: 0 0 36px; width: 36px; height: 36px; border-radius: var(--r2_5); background: var(--bg-neutral-weak); color: var(--fg-neutral-muted); }
+.settings-view .settings-profile-mark svg { width: 18px; height: 18px; }
+.settings-view .settings-profile-select[aria-pressed="true"] .settings-profile-mark { background: var(--bg-brand-weak); color: var(--fg-brand); }
+
+.settings-view .settings-webhook-dialog { width: min(440px, 100%); }
+
+@media (max-width: 767px) {
+  .settings-view .list-item { flex-wrap: wrap; }
+  .settings-view .list-item-actions { margin-left: auto; }
+  .settings-view .settings-select { min-width: 0; max-width: none; width: 100%; }
+  .settings-view .list-item-actions:has(.settings-select) { flex: 1 1 100%; }
+  .settings-view .list-item-actions .button.small { min-height: 36px; }
+  .settings-view .settings-inline-form { flex-direction: column; }
+  .settings-view .settings-button-row .button { flex: 1 1 0; }
+}
+
+/* ---------- Device approval (phone waiting for PC) ---------- */
+.device-approval-screen { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: var(--x6) var(--x4); background: var(--bg-layer-basement); }
+.device-approval-card { display: grid; justify-items: center; gap: var(--x4); width: min(400px, 100%); padding: var(--x8) var(--x6) var(--x6); border-radius: var(--r5); background: var(--bg-layer-default); text-align: center; animation: dialog-in var(--duration-base) var(--ease-enter); }
+.device-approval-icon { display: inline-grid; place-items: center; width: 56px; height: 56px; border-radius: var(--r4); background: var(--bg-brand-weak); color: var(--fg-brand); }
+.device-approval-icon svg { width: 26px; height: 26px; }
+.device-approval-icon.approved { background: var(--bg-positive-weak); color: var(--fg-positive); }
+.device-approval-card h1 { font-size: var(--t7); line-height: var(--lh7); }
+.device-approval-form { display: grid; gap: var(--x4); width: 100%; text-align: left; }
+.device-waiting { display: grid; justify-items: center; gap: var(--x2); padding: var(--x2) 0; }
+.device-waiting strong { font-size: var(--t5); font-weight: var(--w-bold); }
+.device-waiting span { display: inline-flex; align-items: center; gap: var(--x1_5); font-size: var(--t3); color: var(--fg-neutral-muted); }
+.device-waiting span svg { width: 16px; height: 16px; flex: 0 0 16px; }
+.device-approval-card .error-message { width: 100%; text-align: left; }
+.device-id-hint { font-family: var(--font-mono); font-size: var(--t1); color: var(--fg-neutral-subtle); }
+
+@media (max-width: 767px) {
+  .device-approval-card { padding: var(--x6) var(--x5) var(--x5); border-radius: var(--r4); }
+}

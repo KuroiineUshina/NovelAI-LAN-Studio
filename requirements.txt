@@ -1,0 +1,10 @@
+fastapi>=0.116,<1
+uvicorn[standard]>=0.35,<1
+httpx>=0.28,<1
+pydantic>=2.11,<3
+Pillow>=11,<13
+keyring>=25,<27
+python-multipart>=0.0.20,<1
+pystray>=0.19,<1
+pyperclip>=1.9,<2
+mcp>=1.26,<2

@@ -1,0 +1,7 @@
+AndroidX ExifInterface 1.4.2 and its AndroidX dependencies
+Copyright The Android Open Source Project
+Licensed under the Apache License, Version 2.0.
+The complete license is included in Apache-2.0.txt in this directory.
+https://developer.android.com/jetpack/androidx/releases/exifinterface
+
+Used to read image orientation when exporting metadata-free images.

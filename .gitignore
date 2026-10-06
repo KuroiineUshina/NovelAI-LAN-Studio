@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+.venv/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.pytest_cache/
+frontend/*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
+
+# Build outputs
+build/
+dist/
+*.spec.bak
+*.log
+
+# Android
+android/local.properties
+android/.gradle/
+android/build/
+android/app/build/
+android/.idea/
+*.jks
+*.keystore
+
+# Personal, local-only files (never published)
+backups/
+qa-artifacts/
+work/
+CLAUDE.md
+AGENTS.md
+반성문.md
+.claude/

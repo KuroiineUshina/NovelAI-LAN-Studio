@@ -1,0 +1,51 @@
+/* Foldable inner screen (Galaxy Z Fold7 unfolded ≈ 984×1092 CSS px).
+   :root[data-device="fold"] is set by device.ts for near-square touch screens.
+   Loaded after every view stylesheet so it wins over the 1080px/767px breakpoints. */
+
+/* ---------- Touch sizing ---------- */
+:root[data-device="fold"] { --gutter: var(--x5); }
+:root[data-device="fold"] .studio-header { padding: 0 var(--gutter); gap: var(--x3); }
+:root[data-device="fold"] .header-nav button { height: 40px; padding: 0 var(--x3); }
+:root[data-device="fold"] .header-api-label { display: inline; }
+:root[data-device="fold"] .button { min-height: 44px; }
+:root[data-device="fold"] .button.small, :root[data-device="fold"] .button.compact-button { min-height: 36px; }
+:root[data-device="fold"] .icon-button { width: 40px; height: 40px; }
+:root[data-device="fold"] .icon-button.small { width: 34px; height: 34px; }
+:root[data-device="fold"] .chip { min-height: 36px; }
+:root[data-device="fold"] .segmented > button { min-height: 36px; }
+:root[data-device="fold"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+:root[data-device="fold"] select,
+:root[data-device="fold"] textarea { min-height: 44px; font-size: 15px; }
+:root[data-device="fold"] .page { padding: var(--x5) var(--gutter) var(--x16); }
+
+/* ---------- Generate: prompt column and settings column side by side ---------- */
+:root[data-device="fold"] .page-content:has(.generation-view) { --action-bar-height: 72px; }
+:root[data-device="fold"] .generate-layout {
+  grid-template-columns: minmax(0, 1fr) 300px; gap: var(--x4);
+  padding: var(--x4) var(--gutter) calc(var(--action-bar-height) + var(--x6));
+}
+:root[data-device="fold"] .generate-aside {
+  position: sticky; top: calc(var(--header-height) + var(--x4));
+  max-height: calc(100dvh - var(--header-height) - var(--action-bar-height) - var(--x8));
+  overflow-y: auto; grid-template-columns: minmax(0, 1fr);
+}
+:root[data-device="fold"] .generate-modes > button { min-width: 0; padding: 0 var(--x3); }
+/* The description prompt fills the rest of the unfolded screen. */
+:root[data-device="fold"] .prompt-textarea.main-prompt { min-height: max(260px, calc(100dvh - var(--header-height) - var(--action-bar-height) - 440px)); }
+:root[data-device="fold"] .size-preset-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+:root[data-device="fold"] .generation-action-inner { padding: var(--x2_5) var(--gutter); gap: var(--x3); }
+:root[data-device="fold"] .anlas-metrics { gap: var(--x4); }
+:root[data-device="fold"] .anlas-metric small { display: none; }
+:root[data-device="fold"] .opus-limit-track { width: 88px; }
+:root[data-device="fold"] .generate-submit { min-width: 140px; }
+:root[data-device="fold"] .generate-submit kbd { display: none; }
+
+/* ---------- Gallery: 4 columns, info panel beside the image ---------- */
+:root[data-device="fold"] .gallery-view .image-grid,
+:root[data-device="fold"] .gallery-view .image-grid-skeleton { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--x2); }
+:root[data-device="fold"] .gallery-view .detail-modal { grid-template-columns: minmax(0, 1fr) 320px; }
+:root[data-device="fold"] .gallery-view .detail-image-shell { padding: var(--x12) var(--x4); }
+:root[data-device="fold"] .gallery-view .detail-image img { max-width: calc(100vw - 320px - var(--x4) * 2); }
+
+/* ---------- Characters: list and editor side by side ---------- */
+:root[data-device="fold"] .presets-view .presets-layout { grid-template-columns: 260px minmax(0, 1fr); }

@@ -2,9 +2,7 @@
 
 > NovelAI와 관계없는 비공식 앱입니다. 본인의 NovelAI 계정과 Persistent API Token이 필요하며, 생성 비용(Anlas)과 이용약관은 NovelAI 기준을 따릅니다.
 
-[![LAN Studio 소개 영상](docs/promo-poster.jpg)](docs/promo.mp4)
-
-[▶ 소개 영상 보기 (50초)](docs/promo.mp4)
+https://github.com/user-attachments/assets/e6d918dc-c084-46cc-9dc3-d415d66978c9
 
 Windows PC와 승인된 Android 기기에서 NovelAI 이미지 생성과 갤러리를 사용하는 개인용 로컬 앱입니다. 평소에는 PC 서버를 함께 쓰고, Android에는 별도 승인받은 API 프로필을 저장해 PC가 꺼져 있어도 단독으로 사용할 수 있습니다.
 

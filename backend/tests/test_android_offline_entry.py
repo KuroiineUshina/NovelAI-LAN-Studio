@@ -6,7 +6,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_android_unreachable_pc_prefers_standalone_then_offline_gallery() -> None:
+def test_android_unreachable_pc_opens_offline_gallery() -> None:
     source = (
         PROJECT_ROOT
         / "android"
@@ -30,8 +30,6 @@ def test_android_unreachable_pc_prefers_standalone_then_offline_gallery() -> Non
         "private void refreshOfflineGalleryButton", 1
     )[1].split("private void startOfflineGallerySync", 1)[0]
 
-    assert "apiProfileStore.hasProfiles()" in transition
-    assert "showStandaloneMode();" in transition
     assert "showOfflineGallery();" in transition
     assert "hasImages()" not in transition
     assert "hasImages()" not in open_gallery

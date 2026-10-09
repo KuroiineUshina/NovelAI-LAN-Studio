@@ -9,9 +9,6 @@
     <string name="default_server_url">http://192.168.0.2:8787</string>
     <string name="connect">연결하기</string>
     <string name="open_offline_gallery">오프라인 갤러리 열기</string>
-    <string name="open_standalone">모바일 단독모드 열기</string>
-    <string name="standalone_load_failed">모바일 단독모드 화면을 열지 못했습니다.</string>
-    <string name="api_profile_required">PC에서 승인받은 API 프로필이 있어야 단독모드를 사용할 수 있습니다.</string>
     <string name="restore_default">현재 PC 주소 복원</string>
     <string name="connecting">PC 서버를 확인하는 중…</string>
     <string name="connection_notice">앱은 사설 IPv4 또는 Tailscale 100.64–127.x.x 주소에만 연결합니다. 일반 인터넷 주소는 차단됩니다.</string>

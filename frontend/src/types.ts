@@ -48,7 +48,6 @@ export interface AppStatus {
   device_authorized: boolean;
   device_name: string | null;
   pending_device_count: number;
-  pending_api_profile_transfer_count: number;
   has_token: boolean;
   models: ModelSpec[];
   security_notice: string;
@@ -64,20 +63,6 @@ export interface DeviceApproval {
   last_seen_at: string | null;
   last_address: string | null;
   user_agent: string;
-}
-
-export interface ApiProfileTransferRequest {
-  id: string;
-  device_id: string;
-  display_name: string;
-  last_address: string | null;
-  profile_name: string;
-  key_id: string;
-  verification_code: string;
-  status: "pending" | "approved" | "denied" | "expired";
-  requested_at: string;
-  decided_at: string | null;
-  delivered_at: string | null;
 }
 
 export interface AnlasStatus {

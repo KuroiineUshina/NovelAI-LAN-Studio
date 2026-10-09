@@ -72,16 +72,7 @@ def test_image_results_have_motion_with_reduced_motion_fallback() -> None:
     assert "prefers-reduced-motion: reduce" in styles
 
 
-def test_android_offline_and_standalone_surfaces_share_theme_and_motion() -> None:
-    standalone = (
-        PROJECT_ROOT
-        / "android"
-        / "app"
-        / "src"
-        / "main"
-        / "assets"
-        / "standalone.html"
-    ).read_text(encoding="utf-8")
+def test_android_offline_gallery_shares_theme() -> None:
     offline = (
         PROJECT_ROOT
         / "android"
@@ -95,9 +86,6 @@ def test_android_offline_and_standalone_surfaces_share_theme_and_motion() -> Non
         / "OfflineGalleryPage.java"
     ).read_text(encoding="utf-8")
 
-    assert 'id="themeToggle"' in standalone
-    assert "card-enter" in standalone
-    assert "prefers-reduced-motion:reduce" in standalone
     assert "novelai-lan-studio-theme-v1" in offline
     assert 'id=\"themeToggle\"' in offline
 
@@ -110,15 +98,6 @@ def test_borderless_ui_and_warm_light_theme_cover_web_and_android() -> None:
     app = (PROJECT_ROOT / "frontend" / "src" / "App.tsx").read_text(
         encoding="utf-8"
     )
-    standalone = (
-        PROJECT_ROOT
-        / "android"
-        / "app"
-        / "src"
-        / "main"
-        / "assets"
-        / "standalone.html"
-    ).read_text(encoding="utf-8")
     offline = (
         PROJECT_ROOT
         / "android"
@@ -153,15 +132,13 @@ def test_borderless_ui_and_warm_light_theme_cover_web_and_android() -> None:
     ).read_text(encoding="utf-8")
 
     assert "body *:not(.spinner) { border-color: transparent !important; }" in styles
-    assert "body *:not(.spinner){border-color:transparent!important}" in standalone
     assert "body *{border-color:transparent!important}" in offline
     assert "<stroke" not in input_background
     assert "<stroke" not in secondary_button
 
-    for source in (styles, standalone, offline, index, app):
+    for source in (styles, offline, index, app):
         assert "#f3eee4" in source
     assert "#fffaf2" in styles
-    assert "#fffaf2" in standalone
     assert "#fffaf2" in offline
     assert "transition: background-color .2s" not in styles
 
@@ -172,9 +149,6 @@ def test_eight_bundled_korean_fonts_have_local_switches_and_ofl_notices() -> Non
     app = (PROJECT_ROOT / "frontend" / "src" / "App.tsx").read_text(encoding="utf-8")
     settings = (
         PROJECT_ROOT / "frontend" / "src" / "components" / "SettingsView.tsx"
-    ).read_text(encoding="utf-8")
-    standalone = (
-        PROJECT_ROOT / "android" / "app" / "src" / "main" / "assets" / "standalone.html"
     ).read_text(encoding="utf-8")
     canonical_fonts = sorted((PROJECT_ROOT / "assets" / "fonts").glob("*.woff2"))
     licenses = sorted((PROJECT_ROOT / "assets" / "fonts" / "licenses").glob("*.txt"))
@@ -187,5 +161,3 @@ def test_eight_bundled_korean_fonts_have_local_switches_and_ofl_notices() -> Non
     assert "novelai-lan-studio-font-v1" in index
     assert "getInitialAppFont" in app
     assert "고딕 4종과 명조 4종" in settings
-    assert 'id="appFont"' in standalone
-    assert "APP_FONTS" in standalone

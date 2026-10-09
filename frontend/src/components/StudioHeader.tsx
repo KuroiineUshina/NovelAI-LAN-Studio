@@ -23,9 +23,7 @@ interface Props {
 export function StudioHeader({ tab, onNavigate, status, theme, onToggleTheme, notify }: Props) {
   const headerRef = useRef<HTMLElement>(null);
   const connectionRef = useRef<HTMLDetailsElement>(null);
-  const pendingCount = status.admin_available
-    ? status.pending_device_count + status.pending_api_profile_transfer_count
-    : 0;
+  const pendingCount = status.admin_available ? status.pending_device_count : 0;
 
   useEffect(() => {
     const header = headerRef.current;

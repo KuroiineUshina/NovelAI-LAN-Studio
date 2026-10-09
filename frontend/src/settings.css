@@ -22,7 +22,6 @@
 .settings-view .settings-empty { padding: var(--x3) 0; }
 .settings-view .error-message { margin-top: var(--x2); }
 .settings-view .settings-panel-footer { margin-top: var(--x3); }
-.settings-view .settings-subheading { margin: var(--x4) 0 0; font-size: var(--t3); color: var(--fg-neutral-subtle); font-weight: var(--w-bold); }
 
 /* Inline token form */
 .settings-view .settings-inline-form { display: flex; gap: var(--x2); margin-top: var(--x1); }
@@ -39,21 +38,12 @@
 .settings-view .settings-row-icon.pending { background: var(--bg-warning-weak); color: var(--fg-warning); }
 .settings-view .icon-button.settings-approve:hover:not(:disabled) { color: var(--fg-positive); background: var(--bg-positive-weak); }
 
-.settings-view .settings-verification-code { font-family: var(--font-mono); font-weight: var(--w-bold); letter-spacing: 0.12em; color: var(--fg-neutral); font-variant-numeric: tabular-nums; }
-.settings-view .settings-verification-code.small { font-size: var(--t3); }
-.settings-view .settings-code-row { display: flex; align-items: center; justify-content: space-between; gap: var(--x3); padding: var(--x3) var(--x4); border-radius: var(--r2_5); background: var(--bg-neutral-weak); color: var(--fg-neutral-muted); font-size: var(--t3); }
-.settings-view .settings-code-row .settings-verification-code { font-size: var(--t7); }
 
 /* Disclosure styled as a list row */
 .settings-view .settings-row-disclosure > summary { min-height: 56px; padding: var(--x3) 0; font-weight: var(--w-regular); }
 .settings-view .settings-disclosure-body { display: grid; gap: var(--x2); padding: 0 0 var(--x3); }
 .settings-view .settings-button-row { justify-content: flex-end; }
 
-/* Mobile profile list */
-.settings-view .settings-profile-select { display: flex; align-items: center; gap: var(--x3); flex: 1 1 auto; min-width: 0; padding: 0; border: 0; background: transparent; text-align: left; }
-.settings-view .settings-profile-mark { display: inline-grid; place-items: center; flex: 0 0 36px; width: 36px; height: 36px; border-radius: var(--r2_5); background: var(--bg-neutral-weak); color: var(--fg-neutral-muted); }
-.settings-view .settings-profile-mark svg { width: 18px; height: 18px; }
-.settings-view .settings-profile-select[aria-pressed="true"] .settings-profile-mark { background: var(--bg-brand-weak); color: var(--fg-brand); }
 
 .settings-view .settings-webhook-dialog { width: min(440px, 100%); }
 

@@ -340,36 +340,3 @@ class DeviceApprovalPollInput(BaseModel):
         max_length=64,
         pattern=r"^[a-f0-9]{64}$",
     )
-
-
-class ApiProfileTransferRequestInput(BaseModel):
-    profile_name: str = Field(default="이 PC", min_length=1, max_length=80)
-    key_id: str = Field(min_length=8, max_length=120, pattern=r"^[A-Za-z0-9._:-]+$")
-    public_key_b64: str = Field(min_length=256, max_length=8_192)
-
-    @field_validator("profile_name")
-    @classmethod
-    def strip_profile_name(cls, value: str) -> str:
-        return value.strip()
-
-
-class MobileImageSyncMetadata(BaseModel):
-    mobile_image_id: str = Field(
-        min_length=12,
-        max_length=100,
-        pattern=r"^android-[A-Za-z0-9-]+$",
-    )
-    mode: Literal["txt2img"] = "txt2img"
-    model: str = Field(min_length=1, max_length=80)
-    quality_prompt: str = Field(default="", max_length=32_000)
-    description_prompt: str = Field(default="", max_length=32_000)
-    quality_negative_prompt: str = Field(default="", max_length=32_000)
-    description_negative_prompt: str = Field(default="", max_length=32_000)
-    settings: dict[str, Any] = Field(default_factory=dict)
-    character_snapshot: list[dict[str, Any]] = Field(default_factory=list, max_length=22)
-    tags: list[dict[str, Any]] = Field(default_factory=list, max_length=50)
-    seed: int | None = Field(default=None, ge=0, le=4_294_967_295)
-    favorite: bool = False
-    created_at: str = Field(min_length=10, max_length=80)
-    api_profile_id: str | None = Field(default=None, max_length=80)
-    origin_server_id: str | None = Field(default=None, max_length=80)

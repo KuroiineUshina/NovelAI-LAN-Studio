@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { Check, Copy, FolderOpen, KeyRound, MonitorCog, Pencil, Plus, RefreshCw, Smartphone, Trash2, TriangleAlert, X } from "lucide-react";
+import { Check, Copy, FolderOpen, MonitorCog, Pencil, Plus, RefreshCw, Smartphone, Trash2, TriangleAlert, X } from "lucide-react";
 import { api, errorMessage } from "../api";
 import { APP_FONTS } from "../fonts";
 import type { AppFontId } from "../fonts";
-import type { ApiProfileTransferRequest, AppStatus, ClaudeIntegrationStatus, DeviceApproval, DiscordWebhookTarget } from "../types";
+import type { AppStatus, ClaudeIntegrationStatus, DeviceApproval, DiscordWebhookTarget } from "../types";
 import "../settings.css";
 
 interface AutostartStatus {
@@ -35,28 +35,6 @@ interface Props {
   notify: (message: string) => void;
   fontId: AppFontId;
   onFontChange: (fontId: AppFontId) => void;
-}
-
-interface AndroidApiProfile {
-  id: string;
-  name: string;
-  server_id: string;
-  server_url: string;
-  created_at: number;
-  active: boolean;
-}
-
-interface NovelAIAndroidBridge {
-  getApiProfiles: () => string;
-  requestApiProfile: (profileName: string) => boolean;
-  openStandalone: () => boolean;
-  setActiveApiProfile: (profileId: string) => boolean;
-  renameApiProfile: (profileId: string, name: string) => boolean;
-  deleteApiProfile: (profileId: string) => boolean;
-}
-
-function androidBridge(): NovelAIAndroidBridge | null {
-  return (window as typeof window & { NovelAIAndroid?: NovelAIAndroidBridge }).NovelAIAndroid ?? null;
 }
 
 function formatDateTime(value: string | null | undefined): string {
@@ -116,9 +94,6 @@ export function SettingsView({ status, reloadStatus, notify, fontId, onFontChang
   const [devices, setDevices] = useState<DeviceApproval[]>([]);
   const [deviceBusyId, setDeviceBusyId] = useState<string | null>(null);
   const [deviceError, setDeviceError] = useState("");
-  const [profileTransfers, setProfileTransfers] = useState<ApiProfileTransferRequest[]>([]);
-  const [profileTransferBusyId, setProfileTransferBusyId] = useState<string | null>(null);
-  const [profileTransferError, setProfileTransferError] = useState("");
   const [claude, setClaude] = useState<ClaudeIntegrationStatus | null>(null);
   const [claudeChecking, setClaudeChecking] = useState(false);
   const [claudeInstalling, setClaudeInstalling] = useState(false);
@@ -128,48 +103,11 @@ export function SettingsView({ status, reloadStatus, notify, fontId, onFontChang
   const [storageDirectory, setStorageDirectory] = useState("");
   const [storageBusy, setStorageBusy] = useState(false);
   const [storageError, setStorageError] = useState("");
-  const [mobileApiProfiles, setMobileApiProfiles] = useState<AndroidApiProfile[]>([]);
-  const [mobileProfileState, setMobileProfileState] = useState<{
-    state: string;
-    verification_code?: string;
-    error?: string;
-  } | null>(null);
 
   const changeFont = (next: AppFontId) => {
     onFontChange(next);
     notify("이 기기의 글꼴을 바꿨어요");
   };
-
-  const reloadMobileProfiles = () => {
-    const bridge = androidBridge();
-    if (!bridge) return;
-    try {
-      const parsed = JSON.parse(bridge.getApiProfiles()) as AndroidApiProfile[];
-      setMobileApiProfiles(Array.isArray(parsed) ? parsed : []);
-    } catch {
-      setMobileApiProfiles([]);
-    }
-  };
-
-  useEffect(() => {
-    reloadMobileProfiles();
-    const onProfiles = (event: Event) => {
-      const detail = (event as CustomEvent<AndroidApiProfile[]>).detail;
-      if (Array.isArray(detail)) setMobileApiProfiles(detail);
-      else reloadMobileProfiles();
-    };
-    const onTransfer = (event: Event) => {
-      const detail = (event as CustomEvent<{ state: string; verification_code?: string; error?: string }>).detail;
-      setMobileProfileState(detail);
-      if (detail?.state === "approved") reloadMobileProfiles();
-    };
-    window.addEventListener("novelai-api-profiles", onProfiles);
-    window.addEventListener("novelai-api-profile", onTransfer);
-    return () => {
-      window.removeEventListener("novelai-api-profiles", onProfiles);
-      window.removeEventListener("novelai-api-profile", onTransfer);
-    };
-  }, []);
 
   const reloadWebhooks = async () => {
     const result = await api<{ items: DiscordWebhookTarget[] }>("/api/admin/webhooks");
@@ -181,26 +119,19 @@ export function SettingsView({ status, reloadStatus, notify, fontId, onFontChang
     setDevices(result.items);
   };
 
-  const reloadProfileTransfers = async () => {
-    const result = await api<{ items: ApiProfileTransferRequest[] }>("/api/admin/api-profile-transfers");
-    setProfileTransfers(result.items);
-  };
-
   useEffect(() => {
     if (!status.admin_available) return;
     Promise.all([
       api<AdminSettings>("/api/admin/settings"),
       api<{ items: DiscordWebhookTarget[] }>("/api/admin/webhooks"),
       api<{ items: DeviceApproval[] }>("/api/admin/devices"),
-      api<{ items: ApiProfileTransferRequest[] }>("/api/admin/api-profile-transfers"),
     ])
-      .then(([settingsResult, webhookResult, deviceResult, profileTransferResult]) => {
+      .then(([settingsResult, webhookResult, deviceResult]) => {
         setSettings(settingsResult);
         setStorageDirectory(settingsResult.image_storage_directory);
         setClaude(settingsResult.claude);
         setWebhooks(webhookResult.items);
         setDevices(deviceResult.items);
-        setProfileTransfers(profileTransferResult.items);
       })
       .catch((loadError) => setError(errorMessage(loadError)));
   }, [status.admin_available, status.has_token]);
@@ -218,7 +149,7 @@ export function SettingsView({ status, reloadStatus, notify, fontId, onFontChang
   useEffect(() => {
     if (!status.admin_available) return;
     const timer = window.setInterval(() => {
-      void Promise.all([reloadDevices(), reloadProfileTransfers()]).catch(() => undefined);
+      void reloadDevices().catch(() => undefined);
     }, 2_000);
     return () => window.clearInterval(timer);
   }, [status.admin_available]);
@@ -239,8 +170,6 @@ export function SettingsView({ status, reloadStatus, notify, fontId, onFontChang
   }, [webhookDialogOpen]);
 
   if (!status.admin_available) {
-    const bridge = androidBridge();
-    const pending = mobileProfileState?.state === "pending";
     return (
       <div className="page narrow settings-view">
         <header className="page-header"><h1>설정</h1></header>
@@ -248,61 +177,12 @@ export function SettingsView({ status, reloadStatus, notify, fontId, onFontChang
           <div className="panel-header"><h2>일반</h2></div>
           <div className="list"><FontSettingRow fontId={fontId} onChange={changeFont} /></div>
         </section>
-        {bridge ? (
-          <section className="panel">
-            <div className="panel-header"><h2>API 프로필</h2></div>
-            <div className="list">
-              <div className="list-item">
-                <div className="list-item-content">
-                  <span className="list-item-title">이 PC의 API 프로필</span>
-                  <span className="list-item-detail">PC 설정에서 한 번 더 승인해야 해요</span>
-                </div>
-                <div className="list-item-actions">
-                  <button type="button" className="button primary small" disabled={pending} onClick={() => {
-                    const started = bridge.requestApiProfile("이 PC");
-                    if (started) setMobileProfileState({ state: "requesting" });
-                  }}><KeyRound aria-hidden="true" />{pending ? "승인 대기 중" : "저장 요청"}</button>
-                </div>
-              </div>
-              {mobileProfileState?.verification_code ? (
-                <div className="settings-code-row">
-                  <span>PC 화면의 확인 코드</span>
-                  <strong className="settings-verification-code">{mobileProfileState.verification_code}</strong>
-                </div>
-              ) : null}
-              {mobileProfileState?.state === "approved" ? <p className="settings-success">API 프로필을 저장했어요</p> : null}
-              {mobileProfileState?.state === "denied" || mobileProfileState?.state === "expired" ? <p className="error-message">요청이 거절됐거나 만료됐어요</p> : null}
-              {mobileProfileState?.error ? <p className="error-message">{mobileProfileState.error}</p> : null}
-            </div>
-            <h3 className="settings-subheading">저장된 프로필</h3>
-            <div className="list">
-              {mobileApiProfiles.map((profile) => (
-                <div className="list-item" key={profile.id}>
-                  <button type="button" className="settings-profile-select" onClick={() => { bridge.setActiveApiProfile(profile.id); reloadMobileProfiles(); }} aria-pressed={profile.active}>
-                    <span className="settings-profile-mark" aria-hidden="true">{profile.active ? <Check /> : <KeyRound />}</span>
-                    <span className="list-item-content">
-                      <span className="list-item-title">{profile.name}</span>
-                      <span className="list-item-detail">{profile.active ? "사용 중 · " : ""}{profile.server_url || "연결한 PC"}</span>
-                    </span>
-                  </button>
-                  <div className="list-item-actions">
-                    <button type="button" className="icon-button danger" onClick={() => { if (window.confirm(`API 프로필 ‘${profile.name}’을 이 기기에서 삭제할까요?`)) { bridge.deleteApiProfile(profile.id); reloadMobileProfiles(); } }} aria-label={`${profile.name} 삭제`}><Trash2 aria-hidden="true" /></button>
-                  </div>
-                </div>
-              ))}
-              {!mobileApiProfiles.length ? <p className="empty-inline settings-empty">저장된 프로필이 없어요</p> : null}
-            </div>
-            <button type="button" className="button secondary block settings-panel-footer" disabled={!mobileApiProfiles.length} onClick={() => bridge.openStandalone()}><Smartphone aria-hidden="true" />단독모드 열기</button>
-          </section>
-        ) : (
-          <section className="panel">
-            <div className="empty-state">
-              <MonitorCog aria-hidden="true" strokeWidth={1.7} />
-              <strong>PC에서 설정을 열어 주세요</strong>
-              <p>브라우저에서는 단독모드 API 프로필을 저장할 수 없어요</p>
-            </div>
-          </section>
-        )}
+        <section className="panel">
+          <div className="empty-state">
+            <MonitorCog aria-hidden="true" strokeWidth={1.7} />
+            <strong>나머지 설정은 PC에서 열어 주세요</strong>
+          </div>
+        </section>
       </div>
     );
   }
@@ -553,29 +433,6 @@ export function SettingsView({ status, reloadStatus, notify, fontId, onFontChang
     }
   };
 
-  const decideProfileTransfer = async (
-    transfer: ApiProfileTransferRequest,
-    decision: "approve" | "deny",
-  ) => {
-    setProfileTransferBusyId(transfer.id);
-    setProfileTransferError("");
-    try {
-      await api(`/api/admin/api-profile-transfers/${transfer.id}/${decision}`, {
-        method: "POST",
-      });
-      await Promise.all([reloadProfileTransfers(), reloadStatus()]);
-      notify(
-        decision === "approve"
-          ? `‘${transfer.display_name}’에 API 프로필을 보냈어요`
-          : `‘${transfer.display_name}’의 요청을 거절했어요`,
-      );
-    } catch (decisionError) {
-      setProfileTransferError(errorMessage(decisionError));
-    } finally {
-      setProfileTransferBusyId(null);
-    }
-  };
-
   const pendingDevices = devices.filter((device) => device.status === "pending" || device.status === "expired");
   const approvedDevices = devices.filter((device) => device.status === "approved");
   const skillLabel = !claude ? "" : !claude.skill_installed ? "설치 필요" : claude.skill_up_to_date ? "설치됨" : "업데이트 있음";
@@ -720,33 +577,6 @@ export function SettingsView({ status, reloadStatus, notify, fontId, onFontChang
           {!pendingDevices.length && !approvedDevices.length ? <p className="empty-inline settings-empty">연결된 기기가 없어요</p> : null}
         </div>
         {deviceError ? <p className="error-message" role="alert">{deviceError}</p> : null}
-      </section>
-
-      <section className="panel">
-        <div className="panel-header">
-          <h2>모바일 API 프로필 요청</h2>
-          {profileTransfers.length ? <div className="panel-actions"><span className="badge warning">{profileTransfers.length}</span></div> : null}
-        </div>
-        <div className="list">
-          {profileTransfers.map((transfer) => (
-            <div className="list-item" key={transfer.id}>
-              <span className="settings-row-icon pending" aria-hidden="true"><KeyRound /></span>
-              <div className="list-item-content">
-                <span className="list-item-title">{transfer.display_name} · {transfer.profile_name}</span>
-                <span className="list-item-detail">확인 코드 <b className="settings-verification-code small">{transfer.verification_code}</b>{transfer.status === "expired" ? " · 만료됨" : ""}</span>
-                <span className="list-item-detail">{transfer.last_address || "주소 확인 안 됨"} · {formatDateTime(transfer.requested_at)}</span>
-              </div>
-              <div className="list-item-actions">
-                <button type="button" className="icon-button weak settings-approve" disabled={transfer.status === "expired" || profileTransferBusyId === transfer.id} onClick={() => void decideProfileTransfer(transfer, "approve")} aria-label={`${transfer.display_name} API 프로필 승인`}><Check aria-hidden="true" /></button>
-                <button type="button" className="icon-button weak danger" disabled={profileTransferBusyId === transfer.id} onClick={() => void decideProfileTransfer(transfer, "deny")} aria-label={`${transfer.display_name} API 프로필 거절`}><X aria-hidden="true" /></button>
-              </div>
-            </div>
-          ))}
-          {!profileTransfers.length ? <p className="empty-inline settings-empty">요청이 없어요</p> : null}
-        </div>
-        {profileTransfers.length ? <p className="caption settings-note">모바일 화면의 코드와 같을 때만 승인해 주세요</p> : null}
-        <p className="caption settings-note">보낸 토큰은 회수되지 않아요. 무효화하려면 NovelAI에서 토큰을 새로 발급해 주세요</p>
-        {profileTransferError ? <p className="error-message" role="alert">{profileTransferError}</p> : null}
       </section>
 
       <section className="panel">

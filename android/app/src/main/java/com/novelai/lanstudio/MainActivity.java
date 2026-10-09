@@ -63,8 +63,6 @@ public final class MainActivity extends Activity {
     private static final int STORAGE_PERMISSION_REQUEST = 1402;
     private static final String OFFLINE_HOST = "offline.novelai-lan-studio.invalid";
     private static final String OFFLINE_INDEX_URL = "https://" + OFFLINE_HOST + "/offline/index.html";
-    private static final String STANDALONE_HOST = "standalone.novelai-lan-studio.invalid";
-    private static final String STANDALONE_INDEX_URL = "https://" + STANDALONE_HOST + "/index.html";
     private static final long OFFLINE_SYNC_INTERVAL_MS = 5 * 60 * 1000L;
     private static final long OFFLINE_SYNC_DEBOUNCE_MS = 30 * 1000L;
 
@@ -81,7 +79,6 @@ public final class MainActivity extends Activity {
     private Button connectButton;
     private Button restoreButton;
     private Button offlineGalleryButton;
-    private Button standaloneButton;
     private ProgressBar connectProgress;
     private TextView connectStatus;
     private TextView connectError;
@@ -93,12 +90,7 @@ public final class MainActivity extends Activity {
     private volatile String connectedBaseUrl;
     private OfflineGalleryCache offlineGalleryCache;
     private boolean offlineGalleryVisible;
-    private boolean standaloneVisible;
-    private ApiProfileStore apiProfileStore;
-    private ApiProfileProvisioner apiProfileProvisioner;
     private OnlineAndroidBridge onlineAndroidBridge;
-    private StandaloneBridge standaloneBridge;
-    private SecureSecretStore secureSecretStore;
     private boolean destroyed;
 
     @Override
@@ -110,18 +102,15 @@ public final class MainActivity extends Activity {
 
         preferences = getSharedPreferences(PREFERENCES, MODE_PRIVATE);
         offlineGalleryCache = new OfflineGalleryCache(getFilesDir());
-        apiProfileStore = new ApiProfileStore(this);
-        secureSecretStore = new SecureSecretStore(this);
-        apiProfileProvisioner = new ApiProfileProvisioner(apiProfileStore);
         onlineAndroidBridge = new OnlineAndroidBridge(this);
-        standaloneBridge = new StandaloneBridge(this, apiProfileStore);
+        Context appContext = getApplicationContext();
+        cacheExecutor.execute(() -> LegacyStandaloneCleanup.run(appContext));
         webView = findViewById(R.id.studio_webview);
         connectionPanel = findViewById(R.id.connection_panel);
         serverAddress = findViewById(R.id.server_address);
         connectButton = findViewById(R.id.connect_button);
         restoreButton = findViewById(R.id.restore_button);
         offlineGalleryButton = findViewById(R.id.offline_gallery_button);
-        standaloneButton = findViewById(R.id.standalone_button);
         connectProgress = findViewById(R.id.connect_progress);
         connectStatus = findViewById(R.id.connect_status);
         connectError = findViewById(R.id.connect_error);
@@ -131,7 +120,6 @@ public final class MainActivity extends Activity {
 
         connectButton.setOnClickListener(view -> connectToServer());
         offlineGalleryButton.setOnClickListener(view -> showOfflineGallery());
-        standaloneButton.setOnClickListener(view -> showStandaloneMode());
         restoreButton.setOnClickListener(view -> {
             serverAddress.setText(defaultUrl);
             serverAddress.setSelection(serverAddress.length());
@@ -147,7 +135,6 @@ public final class MainActivity extends Activity {
             return false;
         });
         refreshOfflineGalleryButton();
-        refreshStandaloneButton();
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
@@ -161,11 +148,6 @@ public final class MainActivity extends Activity {
             String savedBase = preferences.getString(SERVER_URL_KEY, defaultUrl);
             if (isOfflineUrl(restoredUrl) && offlineGalleryCache.hasImages()) {
                 offlineGalleryVisible = true;
-                showWebView();
-                return;
-            }
-            if (isStandaloneUrl(restoredUrl) && apiProfileStore.hasProfiles()) {
-                standaloneVisible = true;
                 showWebView();
                 return;
             }
@@ -226,13 +208,6 @@ public final class MainActivity extends Activity {
 
             @Override
             public void onPageFinished(WebView view, String url) {
-                if (isStandaloneUrl(url)) {
-                    standaloneVisible = true;
-                    offlineGalleryVisible = false;
-                    showWebView();
-                    view.clearHistory();
-                    return;
-                }
                 if (isOfflineUrl(url)) {
                     offlineGalleryVisible = true;
                     showWebView();
@@ -240,23 +215,12 @@ public final class MainActivity extends Activity {
                     return;
                 }
                 if (ServerAddress.isAllowedUrl(connectedBaseUrl, url)) {
-                    standaloneVisible = false;
                     offlineGalleryVisible = false;
-                    CookieManager cookieManager = CookieManager.getInstance();
-                    cookieManager.flush();
-                    String cookie = cookieManager.getCookie(connectedBaseUrl);
-                    if (cookie != null && cookie.contains("novelai_studio_device=")) {
-                        secureSecretStore.put(
-                            StandaloneSyncClient.COOKIE_PREFIX + connectedBaseUrl,
-                            cookie
-                        );
-                    }
+                    CookieManager.getInstance().flush();
                     showWebView();
                     view.clearHistory();
                     startOfflineGallerySync();
                     scheduleOfflineGallerySync();
-                    standaloneBridge.foregroundSync();
-                    dispatchApiProfiles();
                 }
             }
 
@@ -320,49 +284,15 @@ public final class MainActivity extends Activity {
         if (isOfflineUrl(url)) {
             return false;
         }
-        if (isStandaloneUrl(url)) {
-            return false;
-        }
         return blockUnexpectedNavigation(url);
     }
 
     private WebResourceResponse interceptResource(String url) {
-        WebResourceResponse standalone = interceptStandaloneResource(url);
-        if (standalone != null) return standalone;
         WebResourceResponse offline = interceptOfflineResource(url);
         return offline == null ? interceptUnexpectedResource(url) : offline;
     }
 
-    private WebResourceResponse interceptStandaloneResource(String url) {
-        if (!isStandaloneUrl(url)) return null;
-        Uri uri = Uri.parse(url);
-        String path = uri.getPath();
-        if (path != null && path.startsWith("/local-image/")) {
-            return standaloneBridge.imageResponse(url);
-        }
-        if ("/index.html".equals(path) || "/".equals(path) || path == null || path.isEmpty()) {
-            try (InputStream input = getAssets().open("standalone.html")) {
-                return offlineResponse("text/html", readAll(input, 2 * 1024 * 1024));
-            } catch (IOException error) {
-                return offlineNotFound();
-            }
-        }
-        return offlineNotFound();
-    }
-
-    private static byte[] readAll(InputStream input, int limit) throws IOException {
-        java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
-        byte[] buffer = new byte[8192];
-        int count;
-        while ((count = input.read(buffer)) >= 0) {
-            output.write(buffer, 0, count);
-            if (output.size() > limit) throw new IOException("asset too large");
-        }
-        return output.toByteArray();
-    }
-
     private boolean blockUnexpectedNavigation(String url) {
-        if (isStandaloneUrl(url)) return false;
         if (ServerAddress.isAllowedUrl(connectedBaseUrl, url)) {
             return false;
         }
@@ -458,13 +388,6 @@ public final class MainActivity extends Activity {
             && OFFLINE_HOST.equalsIgnoreCase(uri.getHost());
     }
 
-    private static boolean isStandaloneUrl(String url) {
-        if (url == null) return false;
-        Uri uri = Uri.parse(url);
-        return "https".equalsIgnoreCase(uri.getScheme())
-            && STANDALONE_HOST.equalsIgnoreCase(uri.getHost());
-    }
-
     private void connectToServer() {
         final String normalized;
         try {
@@ -485,7 +408,6 @@ public final class MainActivity extends Activity {
                 }
                 setConnecting(false);
                 if (result == ProbeResult.OK) {
-                    standaloneVisible = false;
                     connectedBaseUrl = normalized;
                     offlineGalleryVisible = false;
                     preferences.edit().putString(SERVER_URL_KEY, normalized).apply();
@@ -538,7 +460,6 @@ public final class MainActivity extends Activity {
     private void setConnecting(boolean connecting) {
         connectButton.setEnabled(!connecting);
         restoreButton.setEnabled(!connecting);
-        standaloneButton.setEnabled(!connecting && apiProfileStore.hasProfiles());
         serverAddress.setEnabled(!connecting);
         connectProgress.setVisibility(connecting ? View.VISIBLE : View.GONE);
         connectStatus.setVisibility(connecting ? View.VISIBLE : View.GONE);
@@ -560,13 +481,11 @@ public final class MainActivity extends Activity {
 
     private void showConnection(String message) {
         offlineGalleryVisible = false;
-        standaloneVisible = false;
         setConnecting(false);
         webView.stopLoading();
         webView.setVisibility(View.GONE);
         connectionPanel.setVisibility(View.VISIBLE);
         refreshOfflineGalleryButton();
-        refreshStandaloneButton();
         if (message == null || message.isEmpty()) {
             clearConnectionError();
         } else {
@@ -576,17 +495,12 @@ public final class MainActivity extends Activity {
     }
 
     private void showOfflineGalleryOrConnection(String message) {
-        if (apiProfileStore.hasProfiles()) {
-            showStandaloneMode();
-        } else {
-            showOfflineGallery();
-        }
+        showOfflineGallery();
     }
 
     private void showOfflineGallery() {
         setConnecting(false);
         offlineGalleryVisible = true;
-        standaloneVisible = false;
         connectionPanel.setVisibility(View.GONE);
         webView.setVisibility(View.VISIBLE);
         webView.loadUrl(OFFLINE_INDEX_URL);
@@ -597,104 +511,6 @@ public final class MainActivity extends Activity {
             return;
         }
         offlineGalleryButton.setVisibility(View.VISIBLE);
-    }
-
-    private void refreshStandaloneButton() {
-        if (standaloneButton == null) return;
-        standaloneButton.setVisibility(apiProfileStore.hasProfiles() ? View.VISIBLE : View.GONE);
-        standaloneButton.setEnabled(apiProfileStore.hasProfiles());
-    }
-
-    private void showStandaloneMode() {
-        if (!apiProfileStore.hasProfiles()) {
-            Toast.makeText(this, R.string.api_profile_required, Toast.LENGTH_LONG).show();
-            return;
-        }
-        standaloneVisible = true;
-        offlineGalleryVisible = false;
-        connectedBaseUrl = null;
-        clearConnectionError();
-        webView.removeJavascriptInterface("AndroidStudio");
-        webView.addJavascriptInterface(standaloneBridge, "AndroidStudio");
-        webView.setVisibility(View.VISIBLE);
-        connectionPanel.setVisibility(View.GONE);
-        webView.loadUrl(STANDALONE_INDEX_URL);
-    }
-
-    void leaveStandaloneMode() {
-        runOnUiThread(() -> {
-            standaloneVisible = false;
-            webView.removeJavascriptInterface("AndroidStudio");
-            webView.addJavascriptInterface(onlineAndroidBridge, "NovelAIAndroid");
-            webView.stopLoading();
-            webView.loadUrl("about:blank");
-            showConnection("");
-        });
-    }
-
-    void runStandaloneScript(String script) {
-        runOnUiThread(() -> {
-            if (!destroyed && standaloneVisible) webView.evaluateJavascript(script, null);
-        });
-    }
-
-    String getApiProfilesJson() {
-        return apiProfileStore.listSafe().toString();
-    }
-
-    boolean requestApiProfile(String profileName) {
-        String baseUrl = connectedBaseUrl;
-        if (baseUrl == null || destroyed) return false;
-        String cookie = CookieManager.getInstance().getCookie(baseUrl);
-        boolean started = apiProfileProvisioner.request(
-            baseUrl,
-            cookie,
-            profileName,
-            event -> runOnUiThread(() -> {
-                if (destroyed) return;
-                refreshStandaloneButton();
-                String script = "window.dispatchEvent(new CustomEvent('novelai-api-profile',{detail:"
-                    + event.toString() + "}))";
-                webView.evaluateJavascript(script, null);
-            })
-        );
-        return started;
-    }
-
-    boolean openStandaloneFromBridge() {
-        if (!apiProfileStore.hasProfiles()) return false;
-        runOnUiThread(this::showStandaloneMode);
-        return true;
-    }
-
-    boolean setActiveApiProfile(String profileId) {
-        boolean changed = apiProfileStore.setActive(profileId);
-        if (changed) dispatchApiProfiles();
-        return changed;
-    }
-
-    boolean renameApiProfile(String profileId, String name) {
-        boolean changed = apiProfileStore.rename(profileId, name);
-        if (changed) dispatchApiProfiles();
-        return changed;
-    }
-
-    boolean deleteApiProfile(String profileId) {
-        boolean changed = apiProfileStore.delete(profileId);
-        if (changed) {
-            runOnUiThread(this::refreshStandaloneButton);
-            dispatchApiProfiles();
-        }
-        return changed;
-    }
-
-    private void dispatchApiProfiles() {
-        runOnUiThread(() -> {
-            if (destroyed || standaloneVisible) return;
-            String script = "window.dispatchEvent(new CustomEvent('novelai-api-profiles',{detail:"
-                + apiProfileStore.listSafe().toString() + "}))";
-            webView.evaluateJavascript(script, null);
-        });
     }
 
     private void startOfflineGallerySync() {
@@ -799,34 +615,6 @@ public final class MainActivity extends Activity {
         }
         String mimeType = removeMetadata ? "image/png" : offlineGalleryCache.getMimeType(id);
         String fileName = removeMetadata ? "novelai-" + id + "-no-metadata.png" : offlineGalleryCache.getDownloadFileName(id);
-        downloadExecutor.execute(() -> {
-            boolean saved;
-            try {
-                saveCachedFileToDownloads(source, fileName, mimeType, removeMetadata);
-                saved = true;
-            } catch (IOException | RuntimeException error) {
-                saved = false;
-            }
-            boolean completed = saved;
-            runOnUiThread(() -> Toast.makeText(
-                this,
-                completed ? R.string.cached_download_complete : R.string.download_failed,
-                Toast.LENGTH_LONG
-            ).show());
-        });
-    }
-
-    void downloadStandaloneImage(File source, String fileName, String mimeType, boolean removeMetadata) {
-        if (source == null || !source.isFile()) {
-            runOnUiThread(() -> Toast.makeText(this, R.string.download_failed, Toast.LENGTH_LONG).show());
-            return;
-        }
-        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P
-            && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                != PackageManager.PERMISSION_GRANTED) {
-            runOnUiThread(() -> Toast.makeText(this, R.string.storage_permission_needed, Toast.LENGTH_LONG).show());
-            return;
-        }
         downloadExecutor.execute(() -> {
             boolean saved;
             try {
@@ -1045,11 +833,6 @@ public final class MainActivity extends Activity {
     private void handleBack() {
         if (connectionPanel.getVisibility() == View.VISIBLE) {
             finish();
-        } else if (standaloneVisible) {
-            requestWebBack(
-                "Boolean(window.Standalone && window.Standalone.handleSystemBack && window.Standalone.handleSystemBack())",
-                this::leaveStandaloneMode
-            );
         } else if (offlineGalleryVisible) {
             requestWebBack(
                 "Boolean(window.OfflineGalleryBack && window.OfflineGalleryBack())",
@@ -1085,7 +868,6 @@ public final class MainActivity extends Activity {
         if (connectedBaseUrl != null && !offlineGalleryVisible) {
             startOfflineGallerySync();
             scheduleOfflineGallerySync();
-            standaloneBridge.foregroundSync();
         }
     }
 
@@ -1104,8 +886,6 @@ public final class MainActivity extends Activity {
         executor.shutdownNow();
         cacheExecutor.shutdownNow();
         downloadExecutor.shutdownNow();
-        apiProfileProvisioner.shutdown();
-        standaloneBridge.shutdown();
         if (fileChooserCallback != null) {
             fileChooserCallback.onReceiveValue(null);
             fileChooserCallback = null;

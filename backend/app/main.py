@@ -8,7 +8,7 @@ import os
 import secrets
 import time
 from contextlib import AsyncExitStack, asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -46,15 +46,9 @@ from .discord_webhook import (
 )
 from .jobs import JobManager, correlation_id
 from .image_export import metadata_free_png
-from .mobile_profiles import (
-    MobileProfileKeyError,
-    encrypt_profile_token,
-    public_key_verification_code,
-)
 from .novelai import NovelAIClient, NovelAIError
 from .schemas import (
     AutostartInput,
-    ApiProfileTransferRequestInput,
     CharacterPresetInput,
     CharacterSetInput,
     DiscordSendInput,
@@ -67,7 +61,6 @@ from .schemas import (
     GenerationRequest,
     QualityPromptPresetInput,
     StorageDirectoryInput,
-    MobileImageSyncMetadata,
     TokenInput,
 )
 from .security import (
@@ -143,10 +136,6 @@ class Services:
         self.device_approval_rate_limiter = SubmissionRateLimiter(
             minimum_interval=2.0,
             message="연결 승인 요청을 너무 빠르게 보냈습니다.",
-        )
-        self.profile_transfer_rate_limiter = SubmissionRateLimiter(
-            minimum_interval=2.0,
-            message="API 프로필 전송 요청을 너무 빠르게 보냈습니다.",
         )
         self.discord = DiscordWebhookClient()
         self.claude = ClaudeIntegration(
@@ -381,11 +370,6 @@ def create_app(
                 if local_machine_client
                 else 0
             ),
-            "pending_api_profile_transfer_count": (
-                state.database.count_pending_api_profile_transfers(pending_cutoff)
-                if local_machine_client
-                else 0
-            ),
             "has_token": bool(state.credentials.get_token()),
             "models": [
                 {
@@ -514,128 +498,6 @@ def create_app(
     async def revoke_device(device_id: str, state: Services = Depends(svc)):
         if not state.database.revoke_device_approval(device_id):
             raise HTTPException(status_code=404, detail="승인된 기기를 찾을 수 없습니다.")
-
-    @app.post("/api/mobile/api-profiles/requests", status_code=202)
-    async def request_mobile_api_profile(
-        body: ApiProfileTransferRequestInput,
-        request: Request,
-        state: Services = Depends(svc),
-    ):
-        device_id = getattr(request.state, "device_id", None)
-        if not device_id or not getattr(request.state, "device_authorized", False):
-            raise HTTPException(
-                status_code=403,
-                detail="승인된 모바일 기기에서만 API 프로필을 요청할 수 있습니다.",
-            )
-        if not state.credentials.get_token():
-            raise HTTPException(
-                status_code=409,
-                detail="PC에 저장된 NovelAI API 토큰이 없습니다.",
-            )
-        state.profile_transfer_rate_limiter.check(request)
-        try:
-            verification_code = public_key_verification_code(body.public_key_b64)
-        except MobileProfileKeyError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        item = state.database.request_api_profile_transfer(
-            device_id,
-            body.profile_name,
-            body.key_id,
-            body.public_key_b64,
-            verification_code,
-        )
-        return {
-            "id": item["id"],
-            "status": item["status"],
-            "profile_name": item["profile_name"],
-            "verification_code": item["verification_code"],
-            "expires_in_seconds": DEVICE_APPROVAL_TTL_MINUTES * 60,
-        }
-
-    @app.get("/api/mobile/api-profiles/requests/{request_id}")
-    async def poll_mobile_api_profile(
-        request_id: str,
-        request: Request,
-        state: Services = Depends(svc),
-    ):
-        device_id = getattr(request.state, "device_id", None)
-        item = state.database.get_api_profile_transfer(request_id)
-        if not item or not device_id or item["device_id"] != device_id:
-            raise HTTPException(status_code=404, detail="API 프로필 요청을 찾을 수 없습니다.")
-        cutoff = iso(utc_now() - timedelta(minutes=DEVICE_APPROVAL_TTL_MINUTES))
-        if item["status"] == "pending" and item["requested_at"] < cutoff:
-            return {"id": request_id, "status": "expired"}
-        response = {
-            "id": item["id"],
-            "status": item["status"],
-            "profile_name": item["profile_name"],
-            "key_id": item["key_id"],
-            "verification_code": item["verification_code"],
-            "server_id": item.get("server_id"),
-        }
-        if item["status"] == "approved":
-            response["encrypted_token_b64"] = item["encrypted_token_b64"]
-            state.database.mark_api_profile_transfer_delivered(request_id)
-        return response
-
-    @app.get(
-        "/api/admin/api-profile-transfers",
-        dependencies=[Depends(require_local_machine)],
-    )
-    async def list_api_profile_transfers(state: Services = Depends(svc)):
-        cutoff = iso(utc_now() - timedelta(minutes=DEVICE_APPROVAL_TTL_MINUTES))
-        items = state.database.list_api_profile_transfers()
-        for item in items:
-            if item["requested_at"] < cutoff:
-                item["status"] = "expired"
-        return {"items": items}
-
-    @app.post(
-        "/api/admin/api-profile-transfers/{request_id}/approve",
-        dependencies=[Depends(require_local_machine)],
-    )
-    async def approve_api_profile_transfer(
-        request_id: str, state: Services = Depends(svc)
-    ):
-        item = state.database.get_api_profile_transfer(request_id, include_key=True)
-        cutoff = iso(utc_now() - timedelta(minutes=DEVICE_APPROVAL_TTL_MINUTES))
-        if (
-            not item
-            or item["status"] != "pending"
-            or item["requested_at"] < cutoff
-        ):
-            raise HTTPException(
-                status_code=409,
-                detail="API 프로필 요청이 없거나 만료되었습니다.",
-            )
-        token = state.credentials.get_token()
-        if not token:
-            raise HTTPException(status_code=409, detail="PC에 저장된 API 토큰이 없습니다.")
-        try:
-            encrypted = encrypt_profile_token(item["public_key_b64"], token)
-        except MobileProfileKeyError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        approved = state.database.approve_api_profile_transfer(
-            request_id,
-            encrypted,
-            state.database.get_or_create_server_id(),
-            cutoff,
-        )
-        if not approved:
-            raise HTTPException(status_code=409, detail="API 프로필 요청을 승인하지 못했습니다.")
-        return approved
-
-    @app.post(
-        "/api/admin/api-profile-transfers/{request_id}/deny",
-        dependencies=[Depends(require_local_machine)],
-    )
-    async def deny_api_profile_transfer(
-        request_id: str, state: Services = Depends(svc)
-    ):
-        item = state.database.deny_api_profile_transfer(request_id)
-        if not item:
-            raise HTTPException(status_code=404, detail="대기 중인 API 프로필 요청이 없습니다.")
-        return item
 
     @app.get("/api/admin/settings", dependencies=[Depends(require_local_machine)])
     async def admin_settings(state: Services = Depends(svc)):
@@ -1272,137 +1134,6 @@ def create_app(
             raise HTTPException(
                 status_code=404, detail="품질 프롬프트 프리셋을 찾을 수 없습니다."
             )
-
-    @app.get("/api/mobile/standalone-snapshot")
-    async def mobile_standalone_snapshot(state: Services = Depends(svc)):
-        return {
-            "schema_version": 1,
-            "server_id": state.database.get_or_create_server_id(),
-            "generated_at": iso(),
-            "models": [
-                {
-                    "id": model.api_id,
-                    "label": model.label,
-                    "family": model.family,
-                    "max_characters": model.max_characters,
-                    "supports_vibe_transfer": model.supports_vibe_transfer,
-                    "supports_character_reference": model.supports_character_reference,
-                }
-                for model in MODELS.values()
-            ],
-            "presets": state.database.list_presets(),
-            "character_sets": state.database.list_character_sets(),
-            "quality_presets": state.database.list_quality_prompt_presets(),
-            "generation_draft": generation_draft_envelope(state),
-        }
-
-    @app.post("/api/mobile-sync/images", status_code=201)
-    async def sync_mobile_image(
-        request: Request,
-        metadata: Annotated[str, Form(...)],
-        file: UploadFile = File(...),
-        state: Services = Depends(svc),
-    ):
-        device_id = getattr(request.state, "device_id", None)
-        if not device_id:
-            raise HTTPException(status_code=403, detail="모바일 기기에서만 동기화할 수 있습니다.")
-        try:
-            parsed = MobileImageSyncMetadata.model_validate_json(metadata)
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail="모바일 이미지 메타데이터가 올바르지 않습니다.") from exc
-        server_id = state.database.get_or_create_server_id()
-        if parsed.origin_server_id and parsed.origin_server_id != server_id:
-            raise HTTPException(
-                status_code=409,
-                detail="이 이미지는 다른 PC의 API 프로필에서 생성되어 현재 PC와 동기화할 수 없습니다.",
-            )
-        existing = state.database.get_image(parsed.mobile_image_id)
-        if existing:
-            updated = await set_favorite(existing["id"], FavoriteInput(favorite=parsed.favorite), state)
-            return {"image": updated, "duplicate": True}
-        data = await file.read(MAX_UPLOAD_BYTES + 1)
-        if len(data) > MAX_UPLOAD_BYTES:
-            raise HTTPException(status_code=413, detail="동기화 이미지는 최대 20MB까지 가능합니다.")
-        try:
-            created = datetime.fromisoformat(parsed.created_at)
-            if created.tzinfo is None:
-                created = created.replace(tzinfo=timezone.utc)
-            created = created.astimezone(timezone.utc)
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail="이미지 생성 시각이 올바르지 않습니다.") from exc
-        now = utc_now()
-        if created > now + timedelta(minutes=10):
-            created = now
-        try:
-            saved = state.storage.save_generated(data, parsed.mobile_image_id)
-        except ImageValidationError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        settings = dict(parsed.settings)
-        settings["api_profile_id"] = parsed.api_profile_id
-        settings["origin_server_id"] = server_id
-        settings["synced_from_device_id"] = device_id
-        request_data = {
-            "mode": "txt2img",
-            "model": parsed.model,
-            "quality_prompt": parsed.quality_prompt,
-            "description_prompt": parsed.description_prompt,
-            "quality_negative_prompt": parsed.quality_negative_prompt,
-            "description_negative_prompt": parsed.description_negative_prompt,
-            "nsfw_enabled": bool(settings.get("nsfw_enabled")),
-            "character_snapshot": parsed.character_snapshot,
-            "parameters": settings,
-            "mobile_sync": True,
-        }
-        job: dict[str, Any] | None = None
-        try:
-            job = state.database.create_job(request_data, correlation_id())
-            state.database.set_job_running(job["id"])
-            tag_ids = state.database.existing_tag_ids(
-                [str(item.get("id") or "") for item in parsed.tags]
-            )
-            image = state.database.create_image(
-                {
-                    "id": parsed.mobile_image_id,
-                    "job_id": job["id"],
-                    "parent_image_id": None,
-                    **saved,
-                    "mode": "txt2img",
-                    "model": parsed.model,
-                    "prompt": NovelAIClient.compose_prompt(
-                        parsed.quality_prompt,
-                        parsed.description_prompt,
-                        bool(settings.get("nsfw_enabled")),
-                    ),
-                    "quality_prompt": parsed.quality_prompt,
-                    "description_prompt": parsed.description_prompt,
-                    "quality_negative_prompt": parsed.quality_negative_prompt,
-                    "description_negative_prompt": parsed.description_negative_prompt,
-                    "negative_prompt": NovelAIClient.compose_negative_prompt(
-                        parsed.quality_negative_prompt,
-                        parsed.description_negative_prompt,
-                    ),
-                    "settings": settings,
-                    "character_snapshot": parsed.character_snapshot,
-                    "seed": parsed.seed,
-                    "created_at": iso(created),
-                    "expires_at": iso(created + timedelta(hours=168)),
-                },
-                tag_ids,
-            )
-            if parsed.favorite:
-                new_file, new_thumb = state.storage.move_favorite(image, True)
-                image = state.database.set_favorite_paths(
-                    image["id"], True, new_file, new_thumb
-                ) or image
-            state.database.finish_job(job["id"], "succeeded", 1)
-        except Exception as exc:
-            if job:
-                state.database.finish_job(
-                    job["id"], "failed", 0, "MOBILE_SYNC", str(exc)[:1_000]
-                )
-            state.storage.delete_paths(saved["file_path"], saved["thumbnail_path"])
-            raise
-        return {"image": _public_image(image), "duplicate": False}
 
     @app.post("/api/uploads", status_code=201)
     async def upload_image(file: UploadFile = File(...), state: Services = Depends(svc)):

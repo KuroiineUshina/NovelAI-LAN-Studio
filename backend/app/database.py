@@ -177,21 +177,6 @@ CREATE TABLE IF NOT EXISTS vibe_encodings (
     created_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS api_profile_transfer_requests (
-    id TEXT PRIMARY KEY,
-    device_id TEXT NOT NULL REFERENCES device_approvals(device_id),
-    profile_name TEXT NOT NULL,
-    key_id TEXT NOT NULL,
-    public_key_b64 TEXT NOT NULL,
-    verification_code TEXT NOT NULL,
-    status TEXT NOT NULL CHECK(status IN ('pending','approved','denied','expired')),
-    encrypted_token_b64 TEXT,
-    server_id TEXT,
-    requested_at TEXT NOT NULL,
-    decided_at TEXT,
-    delivered_at TEXT
-);
-
 CREATE INDEX IF NOT EXISTS idx_images_created_at ON images(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_images_expires_at ON images(expires_at);
 CREATE INDEX IF NOT EXISTS idx_images_favorite_at ON images(favorite_at);
@@ -203,11 +188,10 @@ CREATE INDEX IF NOT EXISTS idx_character_set_members_order ON character_set_memb
 CREATE INDEX IF NOT EXISTS idx_discord_webhooks_name ON discord_webhooks(name COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS idx_device_approvals_status_requested
     ON device_approvals(status, requested_at DESC);
-CREATE INDEX IF NOT EXISTS idx_api_profile_transfers_status_requested
-    ON api_profile_transfer_requests(status, requested_at DESC);
-CREATE INDEX IF NOT EXISTS idx_api_profile_transfers_device_requested
-    ON api_profile_transfer_requests(device_id, requested_at DESC);
 """
+
+# Android standalone mode (and its PC-side API profile transfer) was removed on 2026-10-09.
+REMOVED_STANDALONE_TABLES = ("api_profile_transfer_requests",)
 
 # Storyteller was removed on 2026-10-06. Drop its tables from older databases,
 # children before parents. Images those rows pointed at stay in `images`.
@@ -251,6 +235,9 @@ class Database:
                 connection.execute(f"DROP INDEX IF EXISTS {index_name}")
             for table_name in REMOVED_STORY_TABLES:
                 connection.execute(f"DROP TABLE IF EXISTS {table_name}")
+            for table_name in REMOVED_STANDALONE_TABLES:
+                connection.execute(f"DROP TABLE IF EXISTS {table_name}")
+            connection.execute("DELETE FROM app_settings WHERE key='server_id'")
             job_columns = {row["name"] for row in connection.execute("PRAGMA table_info(jobs)")}
             if "completed_requests" not in job_columns:
                 connection.execute("ALTER TABLE jobs ADD COLUMN completed_requests INTEGER NOT NULL DEFAULT 0")
@@ -695,164 +682,6 @@ class Database:
             )
             connection.commit()
             return cursor.rowcount > 0
-
-    @staticmethod
-    def _public_api_profile_transfer(
-        row: sqlite3.Row | None, *, include_key: bool = False
-    ) -> dict[str, Any] | None:
-        if not row:
-            return None
-        item = dict(row)
-        if not include_key:
-            item.pop("public_key_b64", None)
-        return item
-
-    def request_api_profile_transfer(
-        self,
-        device_id: str,
-        profile_name: str,
-        key_id: str,
-        public_key_b64: str,
-        verification_code: str,
-    ) -> dict[str, Any]:
-        request_id = str(uuid.uuid4())
-        now = iso()
-        with self._write_lock, self.connect() as connection:
-            connection.execute(
-                """UPDATE api_profile_transfer_requests
-                   SET status='expired',decided_at=?
-                   WHERE device_id=? AND status='pending'""",
-                (now, device_id),
-            )
-            connection.execute(
-                """INSERT INTO api_profile_transfer_requests
-                   (id,device_id,profile_name,key_id,public_key_b64,
-                    verification_code,status,requested_at)
-                   VALUES(?,?,?,?,?,?,'pending',?)""",
-                (
-                    request_id,
-                    device_id,
-                    profile_name,
-                    key_id,
-                    public_key_b64,
-                    verification_code,
-                    now,
-                ),
-            )
-            connection.commit()
-            row = connection.execute(
-                "SELECT * FROM api_profile_transfer_requests WHERE id=?",
-                (request_id,),
-            ).fetchone()
-        return self._public_api_profile_transfer(row)  # type: ignore[return-value]
-
-    def get_api_profile_transfer(
-        self, request_id: str, *, include_key: bool = False
-    ) -> dict[str, Any] | None:
-        with self.connect() as connection:
-            row = connection.execute(
-                "SELECT * FROM api_profile_transfer_requests WHERE id=?",
-                (request_id,),
-            ).fetchone()
-        return self._public_api_profile_transfer(row, include_key=include_key)
-
-    def list_api_profile_transfers(self) -> list[dict[str, Any]]:
-        with self.connect() as connection:
-            rows = connection.execute(
-                """SELECT r.*,d.display_name,d.last_address
-                   FROM api_profile_transfer_requests r
-                   JOIN device_approvals d ON d.device_id=r.device_id
-                   WHERE r.status='pending'
-                   ORDER BY r.requested_at DESC"""
-            ).fetchall()
-        return [
-            self._public_api_profile_transfer(row) for row in rows
-        ]  # type: ignore[misc]
-
-    def count_pending_api_profile_transfers(self, requested_after: str) -> int:
-        with self.connect() as connection:
-            return int(
-                connection.execute(
-                    """SELECT COUNT(*) FROM api_profile_transfer_requests
-                       WHERE status='pending' AND requested_at>=?""",
-                    (requested_after,),
-                ).fetchone()[0]
-            )
-
-    def approve_api_profile_transfer(
-        self,
-        request_id: str,
-        encrypted_token_b64: str,
-        server_id: str,
-        requested_after: str,
-    ) -> dict[str, Any] | None:
-        now = iso()
-        with self._write_lock, self.connect() as connection:
-            cursor = connection.execute(
-                """UPDATE api_profile_transfer_requests
-                   SET status='approved',encrypted_token_b64=?,server_id=?,decided_at=?
-                   WHERE id=? AND status='pending' AND requested_at>=?""",
-                (
-                    encrypted_token_b64,
-                    server_id,
-                    now,
-                    request_id,
-                    requested_after,
-                ),
-            )
-            connection.commit()
-            if cursor.rowcount == 0:
-                return None
-            row = connection.execute(
-                "SELECT * FROM api_profile_transfer_requests WHERE id=?",
-                (request_id,),
-            ).fetchone()
-        return self._public_api_profile_transfer(row)
-
-    def deny_api_profile_transfer(self, request_id: str) -> dict[str, Any] | None:
-        now = iso()
-        with self._write_lock, self.connect() as connection:
-            cursor = connection.execute(
-                """UPDATE api_profile_transfer_requests
-                   SET status='denied',decided_at=?
-                   WHERE id=? AND status='pending'""",
-                (now, request_id),
-            )
-            connection.commit()
-            if cursor.rowcount == 0:
-                return None
-            row = connection.execute(
-                "SELECT * FROM api_profile_transfer_requests WHERE id=?",
-                (request_id,),
-            ).fetchone()
-        return self._public_api_profile_transfer(row)
-
-    def mark_api_profile_transfer_delivered(self, request_id: str) -> None:
-        with self._write_lock, self.connect() as connection:
-            connection.execute(
-                """UPDATE api_profile_transfer_requests
-                   SET delivered_at=COALESCE(delivered_at,?)
-                   WHERE id=? AND status='approved'""",
-                (iso(), request_id),
-            )
-            connection.commit()
-
-    def get_or_create_server_id(self) -> str:
-        current = self.get_app_setting("server_id")
-        if current:
-            return current
-        server_id = str(uuid.uuid4())
-        with self._write_lock, self.connect() as connection:
-            connection.execute(
-                """INSERT OR IGNORE INTO app_settings(key,value)
-                   VALUES('server_id',?)""",
-                (server_id,),
-            )
-            connection.commit()
-            row = connection.execute(
-                "SELECT value FROM app_settings WHERE key='server_id'"
-            ).fetchone()
-        return str(row["value"])
 
     def touch_device_approval(
         self, device_id: str, remote_address: str, user_agent: str

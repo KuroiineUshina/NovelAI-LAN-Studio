@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-import json
 import threading
-import uuid
 from concurrent.futures import ThreadPoolExecutor
 
 from fastapi.testclient import TestClient
 
-from backend.app.database import iso
 from backend.app.main import create_app
 from backend.tests.test_storage_directory import _create_image
 
@@ -63,15 +60,3 @@ def test_migration_rejected_while_mutation_or_cleanup_is_active(client, tmp_path
         response = client.put("/api/admin/settings/image-storage", json={"directory": str(tmp_path / "blocked")})
         assert response.status_code == 409
     assert not (tmp_path / "blocked").exists()
-
-
-def test_mobile_duplicate_image_updates_favorite(app, authorize_remote, icon_bytes):
-    with TestClient(app, client=("192.168.1.55", 41000)) as mobile:
-        authorize_remote(mobile)
-        metadata = {"mobile_image_id": "android-" + str(uuid.uuid4()), "model": "nai-diffusion-5-full", "created_at": iso(), "favorite": False}
-        for favorite in (False, True, False):
-            metadata["favorite"] = favorite
-            result = mobile.post("/api/mobile-sync/images", data={"metadata": json.dumps(metadata)}, files={"file": ("icon.png", icon_bytes, "image/png")})
-            assert result.status_code == 201
-            assert bool(result.json()["image"]["favorite_at"]) is favorite
-        assert app.state.services.database.list_jobs()[0]["output_count"] == 1

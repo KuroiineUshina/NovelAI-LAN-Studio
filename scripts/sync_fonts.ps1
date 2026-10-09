@@ -2,8 +2,7 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $SourceRoot = Join-Path $ProjectRoot "assets\fonts"
 $Targets = @(
-    (Join-Path $ProjectRoot "frontend\public\fonts"),
-    (Join-Path $ProjectRoot "android\app\src\main\assets\fonts")
+    (Join-Path $ProjectRoot "frontend\public\fonts")
 )
 
 $FontFiles = Get-ChildItem -LiteralPath $SourceRoot -Filter "*.woff2" -File

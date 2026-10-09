@@ -60,6 +60,7 @@ export default function App() {
     quality_negative_prompt: "",
     description_negative_prompt: "",
     nsfw_enabled: false,
+    nsfw_prompt: "",
     character_preset_ids: [],
     model: "nai-diffusion-5-full",
     parameters: DEFAULT_GENERATION_PARAMETERS,
@@ -421,6 +422,9 @@ export default function App() {
         ? image.description_negative_prompt ?? ""
         : current.description_negative_prompt,
       nsfw_enabled: options.nsfw_enabled ? imageNsfwEnabled : current.nsfw_enabled,
+      nsfw_prompt: options.nsfw_enabled && typeof image.settings.nsfw_prompt === "string"
+        ? image.settings.nsfw_prompt
+        : current.nsfw_prompt ?? "",
       character_preset_ids: options.character_presets ? importedPresetIds : current.character_preset_ids,
       model: options.model ? importedModel : current.model,
       parameters,

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import base64
+import io
 import json
 import re
+import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -13,6 +15,32 @@ from .config import MODELS
 
 
 IMAGE_API_BASE = "https://image.novelai.net"
+# Precise Reference images must be letterboxed (black) onto one of these canvases.
+CHARACTER_REFERENCE_CANVASES = ((1024, 1536), (1536, 1024), (1472, 1472))
+
+
+def letterbox_reference(image_bytes: bytes) -> bytes:
+    from PIL import Image
+
+    with Image.open(io.BytesIO(image_bytes)) as source:
+        image = source.convert("RGB")
+    ratio = image.width / image.height
+    if ratio > 1.2:
+        canvas_size = CHARACTER_REFERENCE_CANVASES[1]
+    elif ratio < 1 / 1.2:
+        canvas_size = CHARACTER_REFERENCE_CANVASES[0]
+    else:
+        canvas_size = CHARACTER_REFERENCE_CANVASES[2]
+    scale = min(canvas_size[0] / image.width, canvas_size[1] / image.height)
+    fitted = image.resize(
+        (max(1, round(image.width * scale)), max(1, round(image.height * scale))),
+        Image.LANCZOS,
+    )
+    canvas = Image.new("RGB", canvas_size, (0, 0, 0))
+    canvas.paste(fitted, ((canvas_size[0] - fitted.width) // 2, (canvas_size[1] - fitted.height) // 2))
+    output = io.BytesIO()
+    canvas.save(output, format="PNG")
+    return output.getvalue()
 
 
 @dataclass
@@ -116,6 +144,18 @@ class NovelAIClient:
         return results
 
     @staticmethod
+    def _decode_zip(content: bytes) -> list[GeneratedImage]:
+        try:
+            with zipfile.ZipFile(io.BytesIO(content)) as archive:
+                names = sorted(name for name in archive.namelist() if not name.endswith("/"))
+                results = [GeneratedImage(data=archive.read(name), seed=None) for name in names]
+        except zipfile.BadZipFile as exc:
+            raise NovelAIError("INVALID_RESPONSE", "NovelAI 응답을 해석하지 못했습니다.") from exc
+        if not results:
+            raise NovelAIError("EMPTY_RESPONSE", "NovelAI가 이미지 없이 응답했습니다.")
+        return results
+
+    @staticmethod
     def _raise_for_status(response: httpx.Response) -> None:
         if response.is_success:
             return
@@ -146,7 +186,7 @@ class NovelAIClient:
 
     @staticmethod
     def compose_prompt(
-        quality_prompt: str, description_prompt: str, nsfw_enabled: bool
+        quality_prompt: str, description_prompt: str, nsfw_enabled: bool, nsfw_prompt: str = ""
     ) -> str:
         quality = quality_prompt.strip().strip(",").strip()
         description = description_prompt.strip()
@@ -163,6 +203,8 @@ class NovelAIClient:
         if nsfw_enabled:
             parts.append("nsfw, uncensored")
         parts.append(description)
+        if nsfw_enabled:
+            parts.append(nsfw_prompt.strip().strip(",").strip())
         return ", ".join(part for part in parts if part)
 
     @staticmethod
@@ -221,7 +263,11 @@ class NovelAIClient:
 
     @staticmethod
     def build_generation_payload(
-        request_data: dict[str, Any], source: bytes | None, mask: bytes | None
+        request_data: dict[str, Any],
+        source: bytes | None,
+        mask: bytes | None,
+        vibes: list[tuple[bytes, float]] | None = None,
+        character_references: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         parameters = request_data["parameters"]
         characters = request_data.get("character_snapshot") or []
@@ -229,6 +275,7 @@ class NovelAIClient:
             request_data.get("quality_prompt", ""),
             request_data.get("description_prompt", request_data.get("prompt", "")),
             bool(request_data.get("nsfw_enabled")),
+            request_data.get("nsfw_prompt", ""),
         )
         base_prompt = NovelAIClient.compose_subject_count_prompt(base_prompt, characters)
         negative_prompt = NovelAIClient.compose_negative_prompt(
@@ -310,6 +357,41 @@ class NovelAIClient:
         }
         if seed is not None:
             request_parameters["seed"] = seed
+        if vibes:
+            # V4+ vibes are pre-encoded per model; Information Extracted is baked into the encoding.
+            request_parameters.update(
+                {
+                    "reference_image_multiple": [
+                        base64.b64encode(encoding).decode("ascii") for encoding, _ in vibes
+                    ],
+                    "reference_strength_multiple": [strength for _, strength in vibes],
+                    "normalize_reference_strength_multiple": False,
+                }
+            )
+        if character_references:
+            request_parameters.update(
+                {
+                    "director_reference_images": [
+                        base64.b64encode(item["image"]).decode("ascii")
+                        for item in character_references
+                    ],
+                    "director_reference_descriptions": [
+                        {
+                            "caption": {"base_caption": item["kind"], "char_captions": []},
+                            "legacy_uc": False,
+                        }
+                        for item in character_references
+                    ],
+                    "director_reference_information_extracted": [1 for _ in character_references],
+                    "director_reference_strength_values": [
+                        item["strength"] for item in character_references
+                    ],
+                    # NovelAI's UI "Fidelity" is sent inverted.
+                    "director_reference_secondary_strength_values": [
+                        round(1 - item["fidelity"], 4) for item in character_references
+                    ],
+                }
+            )
 
         mode = request_data["mode"]
         action = "generate"
@@ -344,13 +426,85 @@ class NovelAIClient:
             "use_new_shared_trial": True,
         }
 
+    async def _post(
+        self, endpoint: str, body: dict[str, Any], correlation_id: str, accept: str = "application/json"
+    ) -> httpx.Response:
+        headers = {
+            **self.headers,
+            "Accept": accept,
+            "X-Correlation-ID": correlation_id,
+            "X-Initiated-At": datetime.now(timezone.utc).isoformat(),
+        }
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(240, connect=20)) as client:
+                response = await client.post(f"{self.base_url}{endpoint}", headers=headers, json=body)
+        except httpx.TimeoutException as exc:
+            raise NovelAIError(
+                "NETWORK_UNCERTAIN",
+                "연결이 끝나기 전에 응답이 끊겼습니다. 중복 과금을 막기 위해 자동 재시도하지 않습니다.",
+            ) from exc
+        except httpx.RequestError as exc:
+            raise NovelAIError("NETWORK", "NovelAI 서버에 연결하지 못했습니다.") from exc
+        self._raise_for_status(response)
+        return response
+
+    async def encode_vibe(
+        self, image: bytes, information_extracted: float, model: str, correlation_id: str
+    ) -> bytes:
+        response = await self._post(
+            "/ai/encode-vibe",
+            {
+                "image": base64.b64encode(image).decode("ascii"),
+                "information_extracted": information_extracted,
+                "model": model,
+            },
+            correlation_id,
+            accept="*/*",
+        )
+        if not response.content:
+            raise NovelAIError("EMPTY_RESPONSE", "NovelAI가 바이브 인코딩 없이 응답했습니다.")
+        return response.content
+
+    async def augment(
+        self, director: dict[str, Any], image: bytes, correlation_id: str
+    ) -> list[GeneratedImage]:
+        from PIL import Image
+
+        with Image.open(io.BytesIO(image)) as source_image:
+            width, height = source_image.size
+        tool = director["tool"]
+        body: dict[str, Any] = {
+            "req_type": tool,
+            "width": width,
+            "height": height,
+            "image": base64.b64encode(image).decode("ascii"),
+        }
+        if tool == "emotion":
+            mood = director.get("emotion") or "neutral"
+            body["prompt"] = f"{mood};;{director.get('prompt') or ''}"
+            body["defry"] = int(director.get("level") or 0)
+        elif tool == "colorize":
+            body["prompt"] = director.get("prompt") or ""
+            body["defry"] = int(director.get("level") or 0)
+        response = await self._post("/ai/augment-image", body, correlation_id, accept="*/*")
+        if "json" in response.headers.get("content-type", ""):
+            try:
+                return self._decode_images(response.json())
+            except ValueError as exc:
+                raise NovelAIError("INVALID_RESPONSE", "NovelAI 응답을 해석하지 못했습니다.") from exc
+        return self._decode_zip(response.content)
+
     async def generate(
         self,
         request_data: dict[str, Any],
         correlation_id: str,
         source: bytes | None = None,
         mask: bytes | None = None,
+        vibes: list[tuple[bytes, float]] | None = None,
+        character_references: list[dict[str, Any]] | None = None,
     ) -> list[GeneratedImage]:
+        if request_data["mode"] == "director":
+            return await self.augment(request_data["director"], source or b"", correlation_id)
         if request_data["mode"] == "upscale":
             endpoint = "/ai/upscale"
             body = {
@@ -359,7 +513,9 @@ class NovelAIClient:
             }
         else:
             endpoint = "/ai/generate-image"
-            body = self.build_generation_payload(request_data, source, mask)
+            body = self.build_generation_payload(
+                request_data, source, mask, vibes=vibes, character_references=character_references
+            )
         headers = {
             **self.headers,
             "X-Correlation-ID": correlation_id,

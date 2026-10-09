@@ -8,6 +8,7 @@ import type {
   AppStatus,
   CharacterPreset,
   CharacterSet,
+  DirectorInput,
   GenerationDraft,
   GenerationMode,
   GenerationRequest,
@@ -17,6 +18,13 @@ import type {
   UploadAsset,
 } from "../types";
 import { InpaintCanvas, type InpaintCanvasHandle } from "./InpaintCanvas";
+import {
+  ReferencePanel,
+  type CharacterReferenceItem,
+  type ReferenceTab,
+  type VibeReferenceItem,
+} from "./ReferencePanel";
+import { DEFAULT_DIRECTOR, DirectorPanel } from "./DirectorPanel";
 import { DEFAULT_GENERATION_PARAMETERS } from "../types";
 import { parseRepeatCount } from "../sequentialGeneration";
 
@@ -25,6 +33,7 @@ const MODES: Array<{ id: GenerationMode; label: string; action: string }> = [
   { id: "img2img", label: "변형", action: "변형" },
   { id: "inpaint", label: "인페인트", action: "인페인트" },
   { id: "upscale", label: "업스케일", action: "업스케일" },
+  { id: "director", label: "디렉터", action: "적용" },
 ];
 
 const SIZE_PRESET_GROUPS = [
@@ -131,6 +140,32 @@ interface Props {
 
 type SourceAsset = ImageRecord | UploadAsset;
 
+const REFERENCES_STORAGE_KEY = "novelai-lan-studio-references-v1";
+
+interface StoredReferences {
+  tab: ReferenceTab;
+  character: CharacterReferenceItem[];
+  vibe: VibeReferenceItem[];
+  director: DirectorInput;
+}
+
+function loadStoredReferences(): StoredReferences {
+  const fallback: StoredReferences = { tab: "character", character: [], vibe: [], director: DEFAULT_DIRECTOR };
+  try {
+    const raw = window.localStorage.getItem(REFERENCES_STORAGE_KEY);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as Partial<StoredReferences>;
+    return {
+      tab: parsed.tab === "vibe" ? "vibe" : "character",
+      character: Array.isArray(parsed.character) ? parsed.character : [],
+      vibe: Array.isArray(parsed.vibe) ? parsed.vibe : [],
+      director: { ...DEFAULT_DIRECTOR, ...(parsed.director ?? {}) },
+    };
+  } catch {
+    return fallback;
+  }
+}
+
 export function GenerateView({
   status,
   presets,
@@ -155,7 +190,7 @@ export function GenerateView({
   const repeatCount = parseRepeatCount(repeatCountInput);
   const submitInFlightRef = useRef(false);
   const [error, setError] = useState("");
-  const [promptTab, setPromptTab] = useState<"quality" | "description">("description");
+  const [promptTab, setPromptTab] = useState<"quality" | "description" | "nsfw">("description");
   const [advanced, setAdvanced] = useState(false);
   const [anlasStatus, setAnlasStatus] = useState<AnlasStatus | null>(null);
   const [anlasLoading, setAnlasLoading] = useState(false);
@@ -169,10 +204,18 @@ export function GenerateView({
   const [characterSetSaving, setCharacterSetSaving] = useState(false);
   const [characterSetError, setCharacterSetError] = useState("");
   const maskRef = useRef<InpaintCanvasHandle>(null);
+  const [storedReferences] = useState(loadStoredReferences);
+  const [referenceTab, setReferenceTab] = useState<ReferenceTab>(storedReferences.tab);
+  const [characterRefs, setCharacterRefs] = useState<CharacterReferenceItem[]>(storedReferences.character);
+  const [vibes, setVibes] = useState<VibeReferenceItem[]>(storedReferences.vibe);
+  const [director, setDirector] = useState<DirectorInput>(storedReferences.director);
+  const usesReferences = mode === "txt2img" || mode === "img2img" || mode === "inpaint";
+  const usesPrompt = mode !== "upscale" && mode !== "director";
   const qualityPrompt = generationDraft.quality_prompt;
   const descriptionPrompt = generationDraft.description_prompt;
   const qualityNegativePrompt = generationDraft.quality_negative_prompt;
   const descriptionNegativePrompt = generationDraft.description_negative_prompt;
+  const nsfwPrompt = generationDraft.nsfw_prompt ?? "";
   const selectedPresetIds = generationDraft.character_preset_ids;
   const model = generationDraft.model;
   const parameters = generationDraft.parameters;
@@ -277,6 +320,25 @@ export function GenerateView({
   }, [presets, selectedPresetIds]);
 
   const modelSpec = status.models.find((item) => item.id === model) ?? status.models[0];
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(REFERENCES_STORAGE_KEY, JSON.stringify({
+        tab: referenceTab,
+        character: characterRefs,
+        vibe: vibes,
+        director,
+      } satisfies StoredReferences));
+    } catch {
+      // Storage can be unavailable (private mode); references just won't persist.
+    }
+  }, [characterRefs, director, referenceTab, vibes]);
+
+  // Only the active reference kind is sent, and only when the model supports it.
+  const activeCharacterRefs = usesReferences && referenceTab === "character" && modelSpec?.supports_character_reference
+    ? characterRefs
+    : [];
+  const activeVibes = usesReferences && referenceTab === "vibe" && modelSpec?.supports_vibe_transfer ? vibes : [];
   const anlasEstimate = useMemo(() => estimateAnlasCost({
     mode,
     model,
@@ -284,7 +346,10 @@ export function GenerateView({
     account: anlasStatus,
     source_width: selectedSource?.width,
     source_height: selectedSource?.height,
-  }), [anlasStatus, mode, model, parameters, selectedSource?.height, selectedSource?.width]);
+    director_tool: director.tool,
+    character_reference_count: activeCharacterRefs.length,
+    vibe_count: activeVibes.length,
+  }), [activeCharacterRefs.length, activeVibes.length, anlasStatus, director.tool, mode, model, parameters, selectedSource?.height, selectedSource?.width]);
   const totalEstimate = anlasEstimate.total === null || repeatCount === null ? null : anlasEstimate.total * repeatCount;
   const estimatedCostLabel = totalEstimate === null
     ? "—"
@@ -424,6 +489,18 @@ export function GenerateView({
     }
   };
 
+  const uploadReference = async (file: File): Promise<SourceAsset | null> => {
+    setError("");
+    try {
+      const uploaded = await uploadFile<UploadAsset>("/api/uploads", file);
+      setSources((current) => [uploaded, ...current]);
+      return uploaded;
+    } catch (uploadError) {
+      setError(errorMessage(uploadError));
+      return null;
+    }
+  };
+
   const handleUpload = async (file: File | undefined) => {
     if (!file) return;
     setError("");
@@ -548,7 +625,7 @@ export function GenerateView({
       setError(`${modelSpec?.label}은 인물을 ${modelSpec?.max_characters}명까지 넣을 수 있어요`);
       return;
     }
-    if (mode !== "upscale" && !descriptionPrompt.trim()) {
+    if (usesPrompt && !descriptionPrompt.trim()) {
       setPromptTab("description");
       setError("묘사 프롬프트를 입력해 주세요");
       return;
@@ -570,15 +647,19 @@ export function GenerateView({
         mode,
         repeat_count: repeatCount,
         model,
-        quality_prompt: mode === "upscale" ? "" : qualityPrompt.trim(),
-        description_prompt: mode === "upscale" ? "" : descriptionPrompt.trim(),
-        quality_negative_prompt: mode === "upscale" ? "" : qualityNegativePrompt.trim(),
-        description_negative_prompt: mode === "upscale" ? "" : descriptionNegativePrompt.trim(),
-        nsfw_enabled: mode === "upscale" ? false : generationDraft.nsfw_enabled,
+        quality_prompt: usesPrompt ? qualityPrompt.trim() : "",
+        description_prompt: usesPrompt ? descriptionPrompt.trim() : "",
+        quality_negative_prompt: usesPrompt ? qualityNegativePrompt.trim() : "",
+        description_negative_prompt: usesPrompt ? descriptionNegativePrompt.trim() : "",
+        nsfw_enabled: usesPrompt ? generationDraft.nsfw_enabled : false,
+        nsfw_prompt: usesPrompt && generationDraft.nsfw_enabled ? nsfwPrompt.trim() : "",
         character_preset_ids: selectedPresetIds,
         source_asset_id: selectedSource?.id ?? null,
         mask_asset_id: maskId,
-        parameters: { ...parameters, count: mode === "upscale" ? 1 : parameters.count },
+        character_references: activeCharacterRefs.map(({ asset_id, kind, strength, fidelity }) => ({ asset_id, kind, strength, fidelity })),
+        vibe_references: activeVibes.map(({ asset_id, strength, information_extracted }) => ({ asset_id, strength, information_extracted })),
+        director: mode === "director" ? director : null,
+        parameters: { ...parameters, count: usesPrompt ? parameters.count : 1 },
       };
       await api<Job>("/api/jobs", { method: "POST", body: JSON.stringify(body) });
       onSubmitted(repeatCount > 1 ? `${repeatCount}회 연속 생성을 시작했어요` : "생성을 시작했어요");
@@ -603,7 +684,7 @@ export function GenerateView({
     event.currentTarget.requestSubmit();
   };
 
-  const outputCount = (mode === "upscale" ? 1 : parameters.count) * (repeatCount ?? 1);
+  const outputCount = (usesPrompt ? parameters.count : 1) * (repeatCount ?? 1);
   const activeMode = MODES.find((item) => item.id === mode) ?? MODES[0];
 
   return (
@@ -629,7 +710,7 @@ export function GenerateView({
                     aria-checked={mode === item.id}
                     onClick={() => {
                       setMode(item.id);
-                      if (item.id === "upscale") {
+                      if (item.id === "upscale" || item.id === "director") {
                         onGenerationDraftChange({
                           ...generationDraft,
                           parameters: { ...parameters, count: 1 },
@@ -682,7 +763,9 @@ export function GenerateView({
 
             {mode === "inpaint" && selectedSource ? <InpaintCanvas ref={maskRef} sourceUrl={selectedSource.content_url} /> : null}
 
-            {mode !== "upscale" ? (
+            {mode === "director" ? <DirectorPanel value={director} onChange={setDirector} /> : null}
+
+            {usesPrompt ? (
               <section className="panel prompt-panel" aria-label="프롬프트">
                 <div className="prompt-panel-head">
                   <div className="tabs prompt-tabs" role="tablist" aria-label="프롬프트 종류">
@@ -704,6 +787,15 @@ export function GenerateView({
                     >
                       품질{selectedQualityPreset ? <small className="prompt-tab-meta">{selectedQualityPreset.name}{qualityPresetChanged ? " · 수정됨" : ""}</small> : null}
                     </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={promptTab === "nsfw"}
+                      aria-controls="nsfw-prompt-panel"
+                      onClick={() => setPromptTab("nsfw")}
+                    >
+                      NSFW{nsfwPrompt.trim() && !generationDraft.nsfw_enabled ? <small className="prompt-tab-meta">꺼짐</small> : null}
+                    </button>
                   </div>
                   <label className="switch nsfw-switch">
                     <input
@@ -716,7 +808,14 @@ export function GenerateView({
                   </label>
                 </div>
 
-                {promptTab === "quality" ? (
+                {promptTab === "nsfw" ? (
+                  <div id="nsfw-prompt-panel" className={`prompt-fields nsfw-prompt-fields${generationDraft.nsfw_enabled ? "" : " inactive"}`} role="tabpanel">
+                    <label className="field">
+                      <span className="label-row"><strong>포지티브</strong><small className="counter">{nsfwPrompt.length.toLocaleString()}</small></span>
+                      <textarea className="prompt-textarea" value={nsfwPrompt} onChange={(event) => onGenerationDraftChange({ ...generationDraft, nsfw_prompt: event.target.value })} rows={6} />
+                    </label>
+                  </div>
+                ) : promptTab === "quality" ? (
                   <div id="quality-prompt-panel" className="prompt-fields" role="tabpanel">
                     <div className="quality-preset-bar">
                       <select
@@ -759,6 +858,24 @@ export function GenerateView({
                   </div>
                 )}
               </section>
+            ) : null}
+
+            {usesReferences ? (
+              <ReferencePanel
+                tab={referenceTab}
+                onTabChange={setReferenceTab}
+                characterRefs={characterRefs}
+                onCharacterRefsChange={setCharacterRefs}
+                vibes={vibes}
+                onVibesChange={setVibes}
+                modelSpec={modelSpec}
+                models={status.models}
+                onModelChange={(modelId) => onGenerationDraftChange({ ...generationDraft, model: modelId })}
+                sources={sources}
+                loadingSources={loadingSources}
+                onOpenPicker={() => { if (!sources.length) void loadSources(); }}
+                onUpload={uploadReference}
+              />
             ) : null}
           </div>
 
@@ -848,7 +965,7 @@ export function GenerateView({
                   {status.models.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
                 </select>
               </div>
-              {mode !== "upscale" ? (
+              {usesPrompt ? (
                 <div className="stack">
                   <div className="dimension-row">
                     <label className="field"><span className="field-label">가로</span><input type="number" min="64" max="8192" step="64" value={parameters.width} onChange={(event) => updateNumber("width", Number(event.target.value))} /></label>

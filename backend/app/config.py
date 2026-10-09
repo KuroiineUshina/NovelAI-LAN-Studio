@@ -29,6 +29,15 @@ class ModelSpec:
     max_characters: int
 
     @property
+    def supports_vibe_transfer(self) -> bool:
+        # NovelAI has not shipped Vibe Transfer or Precise Reference for V5 yet.
+        return self.family in {"v4", "v4.5"}
+
+    @property
+    def supports_character_reference(self) -> bool:
+        return self.family == "v4.5"
+
+    @property
     def inpaint_id(self) -> str:
         return f"{self.api_id}-inpainting"
 

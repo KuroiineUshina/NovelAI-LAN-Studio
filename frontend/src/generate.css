@@ -47,6 +47,30 @@
 .selected-source > div { display: grid; gap: var(--x0_5); min-width: 0; }
 .selected-source strong { font-size: var(--t4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+.nsfw-prompt-fields.inactive textarea { opacity: .55; }
+
+/* References */
+.reference-panel .panel-header { margin-bottom: var(--x3); }
+.reference-tabs > button small { margin-left: var(--x1); font-size: var(--t1); font-variant-numeric: tabular-nums; opacity: .7; }
+.reference-panel .button svg { width: 15px; height: 15px; }
+.reference-unsupported { display: flex; align-items: center; justify-content: space-between; gap: var(--x3); padding: var(--x2_5) var(--x3); margin-bottom: var(--x3); border-radius: var(--r2); background: var(--bg-neutral-weak); font-size: var(--t3); color: var(--fg-neutral-muted); }
+.reference-note { margin-bottom: var(--x2); }
+.reference-picker { margin-bottom: var(--x3); }
+.reference-upload { display: grid; place-items: center; cursor: pointer; color: var(--fg-neutral-muted); }
+.reference-upload svg { width: 20px; height: 20px; }
+.reference-upload input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.reference-list { display: grid; gap: var(--x3); margin: 0; padding: 0; list-style: none; }
+.reference-item { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; align-items: start; gap: var(--x3); }
+.reference-item > img { width: 72px; height: 96px; border-radius: var(--r2); object-fit: cover; background: var(--bg-neutral-weak); }
+.reference-controls { display: grid; gap: var(--x1_5); min-width: 0; }
+.reference-kind { justify-self: start; }
+.reference-slider { display: grid; grid-template-columns: 48px minmax(0, 1fr) 36px; align-items: center; gap: var(--x2); font-size: var(--t3); font-weight: var(--w-bold); }
+.reference-slider output { font-size: var(--t2); font-weight: var(--w-regular); color: var(--fg-neutral-subtle); font-variant-numeric: tabular-nums; text-align: right; }
+
+/* Director */
+.director-panel { display: grid; gap: var(--x4); }
+.director-emotions .chip { min-height: 30px; padding: 0 var(--x2_5); }
+
 /* Inpaint */
 .inpaint-panel { display: grid; gap: var(--x3); }
 .inpaint-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--x2) var(--x3); }

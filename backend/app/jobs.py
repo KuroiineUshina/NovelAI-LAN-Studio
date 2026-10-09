@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import hashlib
 import logging
 import secrets
 import string
@@ -11,7 +12,7 @@ from typing import Any
 
 from .credentials import CredentialStore, CredentialStoreError
 from .database import Database, iso, utc_now
-from .novelai import NovelAIClient, NovelAIError
+from .novelai import NovelAIClient, NovelAIError, letterbox_reference
 from .storage import ImageStorage, StorageActivityGate, StorageBusyError, StorageLocationError
 
 
@@ -99,6 +100,45 @@ class JobManager:
             return self.storage.read(upload["file_path"]), None
         raise NovelAIError("SOURCE_MISSING", "원본 이미지가 없거나 보관 기간이 만료되었습니다.")
 
+    def _resolve_reference(self, asset_id: str) -> bytes:
+        try:
+            image, _ = self._resolve_source(asset_id)
+        except NovelAIError as exc:
+            raise NovelAIError(
+                "REFERENCE_MISSING", "레퍼런스 이미지가 없거나 보관 기간이 만료되었습니다."
+            ) from exc
+        return image or b""
+
+    async def _prepare_references(
+        self, client: NovelAIClient, request_data: dict[str, Any], correlation: str
+    ) -> tuple[list[tuple[bytes, float]], list[dict[str, Any]]]:
+        model = request_data["model"]
+        vibes: list[tuple[bytes, float]] = []
+        for item in request_data.get("vibe_references") or []:
+            image = await asyncio.to_thread(self._resolve_reference, item["asset_id"])
+            information_extracted = round(float(item.get("information_extracted", 1.0)), 4)
+            cache_key = f"{hashlib.sha256(image).hexdigest()}:{model}:{information_extracted}"
+            encoding = await asyncio.to_thread(self.database.get_vibe_encoding, cache_key)
+            if encoding is None:
+                # Each encode costs Anlas, so it is cached per image, model and IE value.
+                encoding = await client.encode_vibe(image, information_extracted, model, correlation)
+                await asyncio.to_thread(
+                    self.database.save_vibe_encoding, cache_key, model, information_extracted, encoding
+                )
+            vibes.append((encoding, float(item.get("strength", 0.6))))
+        references: list[dict[str, Any]] = []
+        for item in request_data.get("character_references") or []:
+            image = await asyncio.to_thread(self._resolve_reference, item["asset_id"])
+            references.append(
+                {
+                    "image": await asyncio.to_thread(letterbox_reference, image),
+                    "kind": item.get("kind") or "character&style",
+                    "strength": float(item.get("strength", 1.0)),
+                    "fidelity": float(item.get("fidelity", 1.0)),
+                }
+            )
+        return vibes, references
+
     async def _process(self, job_id: str) -> None:
         with self.storage_gate.activity():
             await self._process_active(job_id)
@@ -132,6 +172,9 @@ class JobManager:
                 mask = await asyncio.to_thread(self.storage.read, mask_record["file_path"])
 
             client = NovelAIClient(token, self.novelai_base_url) if self.novelai_base_url else NovelAIClient(token)
+            vibes, character_references = await self._prepare_references(
+                client, request_data, job["correlation_id"]
+            )
             repeat_count = request_data.get("repeat_count", 1)
             if not isinstance(repeat_count, int) or not 1 <= repeat_count <= 100:
                 raise NovelAIError("REPEAT_COUNT", "연속 생성은 1~100회까지 가능합니다.")
@@ -152,6 +195,8 @@ class JobManager:
                     job["correlation_id"],
                     source=source,
                     mask=mask,
+                    vibes=vibes,
+                    character_references=character_references,
                 )
 
                 characters = request_data.get("character_snapshot") or []
@@ -196,6 +241,16 @@ class JobManager:
                         "settings": {
                             **request_data["parameters"],
                             "nsfw_enabled": bool(request_data.get("nsfw_enabled")),
+                            **(
+                                {"nsfw_prompt": request_data["nsfw_prompt"]}
+                                if request_data.get("nsfw_enabled") and request_data.get("nsfw_prompt")
+                                else {}
+                            ),
+                            **{
+                                key: request_data[key]
+                                for key in ("vibe_references", "character_references", "director")
+                                if request_data.get(key)
+                            },
                         },
                         "character_snapshot": characters,
                         "seed": output.seed,

@@ -168,6 +168,15 @@ CREATE TABLE IF NOT EXISTS device_approvals (
     user_agent TEXT NOT NULL DEFAULT ''
 );
 
+-- Vibe Transfer encodings cost Anlas and are bound to one model + Information Extracted value.
+CREATE TABLE IF NOT EXISTS vibe_encodings (
+    cache_key TEXT PRIMARY KEY,
+    model TEXT NOT NULL,
+    information_extracted REAL NOT NULL,
+    data BLOB NOT NULL,
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS api_profile_transfer_requests (
     id TEXT PRIMARY KEY,
     device_id TEXT NOT NULL REFERENCES device_approvals(device_id),
@@ -1073,6 +1082,24 @@ class Database:
             )
             connection.commit()
         return self.get_upload(upload_id)  # type: ignore[return-value]
+
+    def get_vibe_encoding(self, cache_key: str) -> bytes | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT data FROM vibe_encodings WHERE cache_key=?", (cache_key,)
+            ).fetchone()
+        return bytes(row["data"]) if row else None
+
+    def save_vibe_encoding(
+        self, cache_key: str, model: str, information_extracted: float, data: bytes
+    ) -> None:
+        with self._write_lock, self.connect() as connection:
+            connection.execute(
+                """INSERT OR REPLACE INTO vibe_encodings
+                   (cache_key,model,information_extracted,data,created_at) VALUES(?,?,?,?,?)""",
+                (cache_key, model, information_extracted, data, iso()),
+            )
+            connection.commit()
 
     def get_upload(self, upload_id: str) -> dict[str, Any] | None:
         with self.connect() as connection:

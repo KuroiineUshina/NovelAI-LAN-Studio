@@ -8,7 +8,18 @@ from .config import MAX_IMAGE_DIMENSION, MODELS
 
 
 SubjectType = Literal["girl", "boy", "other"]
-GenerationMode = Literal["txt2img", "img2img", "inpaint", "upscale"]
+GenerationMode = Literal["txt2img", "img2img", "inpaint", "upscale", "director"]
+DirectorTool = Literal[
+    "bg-removal", "lineart", "sketch", "colorize", "emotion", "declutter", "declutter-keep-bubbles"
+]
+ReferenceKind = Literal["character", "style", "character&style"]
+EMOTIONS = (
+    "neutral", "happy", "sad", "angry", "scared", "surprised", "tired", "excited", "nervous",
+    "thinking", "confused", "shy", "disgusted", "smug", "bored", "laughing", "irritated",
+    "aroused", "embarrassed", "worried", "love", "determined", "hurt", "playful",
+)
+MAX_VIBE_REFERENCES = 16
+MAX_CHARACTER_REFERENCES = 4
 NoiseSchedule = Literal["karras", "exponential", "polyexponential"]
 
 
@@ -123,6 +134,40 @@ class GenerationParameters(BaseModel):
     noise: float = Field(default=0.2, ge=0, le=1)
 
 
+class VibeReferenceInput(BaseModel):
+    asset_id: str = Field(min_length=1, max_length=80)
+    strength: float = Field(default=0.6, ge=0, le=1)
+    information_extracted: float = Field(default=1.0, ge=0.01, le=1)
+
+
+class CharacterReferenceInput(BaseModel):
+    asset_id: str = Field(min_length=1, max_length=80)
+    kind: ReferenceKind = "character&style"
+    strength: float = Field(default=1.0, ge=0, le=1)
+    fidelity: float = Field(default=1.0, ge=0, le=1)
+
+
+class DirectorInput(BaseModel):
+    tool: DirectorTool
+    emotion: str = "happy"
+    prompt: str = Field(default="", max_length=2_000)
+    # 0 = full effect, 5 = weakest (NovelAI "defry").
+    level: int = Field(default=0, ge=0, le=5)
+
+    @field_validator("emotion")
+    @classmethod
+    def validate_emotion(cls, value: str) -> str:
+        value = value.strip().lower()
+        if value not in EMOTIONS:
+            raise ValueError("지원하지 않는 표정입니다.")
+        return value
+
+    @field_validator("prompt")
+    @classmethod
+    def strip_director_prompt(cls, value: str) -> str:
+        return value.strip()
+
+
 class GenerationRequest(BaseModel):
     mode: GenerationMode
     repeat_count: int = Field(default=1, ge=1, le=100, strict=True)
@@ -132,9 +177,17 @@ class GenerationRequest(BaseModel):
     quality_negative_prompt: str = Field(default="", max_length=32_000)
     description_negative_prompt: str = Field(default="", max_length=32_000)
     nsfw_enabled: bool = False
+    nsfw_prompt: str = Field(default="", max_length=32_000)
     character_preset_ids: list[str] = Field(default_factory=list)
     source_asset_id: str | None = None
     mask_asset_id: str | None = None
+    vibe_references: list[VibeReferenceInput] = Field(
+        default_factory=list, max_length=MAX_VIBE_REFERENCES
+    )
+    character_references: list[CharacterReferenceInput] = Field(
+        default_factory=list, max_length=MAX_CHARACTER_REFERENCES
+    )
+    director: DirectorInput | None = None
     parameters: GenerationParameters = Field(default_factory=GenerationParameters)
 
     @model_validator(mode="before")
@@ -159,6 +212,7 @@ class GenerationRequest(BaseModel):
         "description_prompt",
         "quality_negative_prompt",
         "description_negative_prompt",
+        "nsfw_prompt",
     )
     @classmethod
     def strip_prompt(cls, value: str) -> str:
@@ -168,9 +222,9 @@ class GenerationRequest(BaseModel):
     def validate_mode(self) -> "GenerationRequest":
         if self.model not in MODELS:
             raise ValueError("지원하지 않는 모델입니다.")
-        if self.mode != "upscale" and not self.description_prompt:
+        if self.mode not in {"upscale", "director"} and not self.description_prompt:
             raise ValueError("묘사 프롬프트를 입력해 주세요.")
-        if self.mode in {"img2img", "inpaint", "upscale"} and not self.source_asset_id:
+        if self.mode in {"img2img", "inpaint", "upscale", "director"} and not self.source_asset_id:
             raise ValueError("원본 이미지가 필요합니다.")
         if self.mode == "inpaint" and not self.mask_asset_id:
             raise ValueError("인페인트 마스크가 필요합니다.")
@@ -178,7 +232,20 @@ class GenerationRequest(BaseModel):
             raise ValueError("텍스트 생성에는 원본 또는 마스크를 사용할 수 없습니다.")
         if self.mode == "upscale" and self.parameters.count != 1:
             raise ValueError("업스케일은 한 번에 한 장만 처리할 수 있습니다.")
+        if self.mode == "director":
+            if not self.director:
+                raise ValueError("디렉터 도구를 골라 주세요.")
+            if self.parameters.count != 1:
+                raise ValueError("디렉터 도구는 한 번에 한 장만 처리할 수 있습니다.")
         model = MODELS[self.model]
+        if self.mode in {"upscale", "director"} and (self.vibe_references or self.character_references):
+            raise ValueError("레퍼런스는 생성·변형·인페인트에서만 쓸 수 있습니다.")
+        if self.vibe_references and self.character_references:
+            raise ValueError("바이브 트랜스퍼와 캐릭터 레퍼런스는 함께 쓸 수 없습니다.")
+        if self.vibe_references and not model.supports_vibe_transfer:
+            raise ValueError(f"{model.label}은 바이브 트랜스퍼를 지원하지 않습니다. V4.5 모델을 골라 주세요.")
+        if self.character_references and not model.supports_character_reference:
+            raise ValueError(f"{model.label}은 캐릭터 레퍼런스를 지원하지 않습니다. V4.5 모델을 골라 주세요.")
         if len(self.character_preset_ids) > model.max_characters:
             raise ValueError(f"{model.label}은 인물을 최대 {model.max_characters}명까지 지원합니다.")
         return self
@@ -205,6 +272,8 @@ class GenerationDraft(BaseModel):
     quality_negative_prompt: str = Field(default="", max_length=32_000)
     description_negative_prompt: str = Field(default="", max_length=32_000)
     nsfw_enabled: bool = False
+    # Kept even while NSFW is off; only sent to NovelAI when nsfw_enabled is true.
+    nsfw_prompt: str = Field(default="", max_length=32_000)
     character_preset_ids: list[str] = Field(default_factory=list, max_length=22)
     model: str = "nai-diffusion-5-full"
     parameters: GenerationParameters = Field(default_factory=GenerationParameters)

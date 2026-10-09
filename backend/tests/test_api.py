@@ -120,6 +120,7 @@ def test_generation_draft_persists(client: TestClient):
         "quality_negative_prompt": "blurry, low quality",
         "description_negative_prompt": "empty street",
         "nsfw_enabled": False,
+        "nsfw_prompt": "kept while off",
         "character_preset_ids": ["preset-a", "preset-b"],
         "model": "nai-diffusion-5-curated",
         "parameters": {

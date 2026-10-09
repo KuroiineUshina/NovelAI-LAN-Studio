@@ -393,6 +393,8 @@ def create_app(
                     "label": model.label,
                     "family": model.family,
                     "max_characters": model.max_characters,
+                    "supports_vibe_transfer": model.supports_vibe_transfer,
+                    "supports_character_reference": model.supports_character_reference,
                 }
                 for model in MODELS.values()
             ],
@@ -941,6 +943,11 @@ def create_app(
         body: GenerationDraft, state: Services, client_id: str = "legacy-client"
     ) -> dict[str, Any]:
         async with state._draft_sync_lock:
+            if "nsfw_prompt" not in body.model_fields_set:
+                # Older clients (Android standalone) don't know this field; keep the saved text.
+                body = body.model_copy(
+                    update={"nsfw_prompt": load_generation_draft(state).nsfw_prompt}
+                )
             revision = generation_draft_revision(state) + 1
             state.database.set_app_settings(
                 {
@@ -1009,6 +1016,7 @@ def create_app(
                 "quality_negative_prompt": draft["quality_negative_prompt"],
                 "negative_description": draft["description_negative_prompt"],
                 "nsfw_enabled": draft["nsfw_enabled"],
+                "nsfw_prompt": draft["nsfw_prompt"],
             },
             "quality_preset": (
                 {"id": quality_preset["id"], "name": quality_preset["name"]}
@@ -1277,6 +1285,8 @@ def create_app(
                     "label": model.label,
                     "family": model.family,
                     "max_characters": model.max_characters,
+                    "supports_vibe_transfer": model.supports_vibe_transfer,
+                    "supports_character_reference": model.supports_character_reference,
                 }
                 for model in MODELS.values()
             ],

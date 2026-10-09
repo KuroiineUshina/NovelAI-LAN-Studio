@@ -1,5 +1,27 @@
 export type Tab = "generate" | "gallery" | "presets" | "stats" | "settings";
-export type GenerationMode = "txt2img" | "img2img" | "inpaint" | "upscale";
+export type GenerationMode = "txt2img" | "img2img" | "inpaint" | "upscale" | "director";
+export type DirectorTool = "bg-removal" | "lineart" | "sketch" | "colorize" | "emotion" | "declutter" | "declutter-keep-bubbles";
+export type ReferenceKind = "character" | "style" | "character&style";
+
+export interface VibeReference {
+  asset_id: string;
+  strength: number;
+  information_extracted: number;
+}
+
+export interface CharacterReference {
+  asset_id: string;
+  kind: ReferenceKind;
+  strength: number;
+  fidelity: number;
+}
+
+export interface DirectorInput {
+  tool: DirectorTool;
+  emotion: string;
+  prompt: string;
+  level: number;
+}
 export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled" | "interrupted";
 
 export interface ModelSpec {
@@ -7,6 +29,8 @@ export interface ModelSpec {
   label: string;
   family: string;
   max_characters: number;
+  supports_vibe_transfer?: boolean;
+  supports_character_reference?: boolean;
 }
 
 export interface AppStatus {
@@ -160,7 +184,7 @@ export interface ImageRecord {
   quality_negative_prompt: string;
   description_negative_prompt: string;
   negative_prompt: string;
-  settings: GenerationParameters & { nsfw_enabled?: boolean };
+  settings: GenerationParameters & { nsfw_enabled?: boolean; nsfw_prompt?: string };
   character_snapshot: Array<Record<string, unknown>>;
   seed: number | null;
   created_at: string;
@@ -226,9 +250,13 @@ export interface GenerationRequest {
   quality_negative_prompt: string;
   description_negative_prompt: string;
   nsfw_enabled: boolean;
+  nsfw_prompt?: string;
   character_preset_ids: string[];
   source_asset_id: string | null;
   mask_asset_id: string | null;
+  vibe_references?: VibeReference[];
+  character_references?: CharacterReference[];
+  director?: DirectorInput | null;
   parameters: GenerationParameters;
 }
 
@@ -266,6 +294,7 @@ export interface GenerationDraft {
   quality_negative_prompt: string;
   description_negative_prompt: string;
   nsfw_enabled: boolean;
+  nsfw_prompt: string;
   character_preset_ids: string[];
   model: string;
   parameters: GenerationParameters;

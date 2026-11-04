@@ -21,7 +21,7 @@ Windows PC와 승인된 Android 기기에서 NovelAI 이미지 생성과 갤러�
 - Claude(Claude Code·데스크톱 앱)에서 이미지 묘사 P·N, 명시적으로 요청한 품질 P·N과 NSFW 상태를 적용하는 루프백 전용 MCP
 - 명시적으로 부를 때만 쓰는 MCP 생성 도구: 공유 초안을 건드리지 않고 생성·img2img·인페인트 후 지정 폴더에 PNG 저장(`generate_images`), 단색 배경 투명화 또는 디렉터 배경 제거(`remove_background`), 시간 초과 작업 결과 받기(`collect_generation_outputs`). 결과는 갤러리에 남기지 않고 Anlas 변화량을 함께 반환
 - 인페인트는 NovelAI 웹과 같은 8px 격자 마스크로 보내고, 마스크 밖은 원본 픽셀로 되돌려 반복 편집해도 색이 틀어지지 않음
-- EXIF 화면: 이미지를 고르거나 끌어 놓거나 붙여 넣으면 NovelAI(텍스트 청크·stealth pnginfo)·WebUI 생성 정보와 카메라 EXIF를 읽어 표시하고 프롬프트별로 복사. 이미지는 저장하지 않음
+- EXIF 화면: 이미지를 고르거나 끌어 놓거나 붙여 넣으면 NovelAI(텍스트 청크·stealth pnginfo)·WebUI 생성 정보와 카메라 EXIF를 읽어 표시하고 프롬프트별로 복사, 읽은 프롬프트를 바로 품질 프리셋으로 저장. 이미지는 저장하지 않음
 - `품질 → nsfw, uncensored → 묘사 → NSFW 프롬프트` 순서로 조합되는 NSFW 옵션, NSFW 전용 프롬프트는 꺼 둬도 저장되고 켰을 때만 반영
 - 정사각·세로·가로·긴 화면·대형 이미지 크기 프리셋과 가로/세로 전환
 - 생성 화면 하단 고정 실행 버튼과 `Ctrl+Enter` 생성 단축키, Prompt Guidance Rescale, 설정별 예상 ANLAS·계정 잔액·Opus V5 무료 사용 한도와 1% 충전 속도·완충 예상 표시

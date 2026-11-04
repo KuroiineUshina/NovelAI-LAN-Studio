@@ -470,7 +470,7 @@ export default function App() {
           {tab === "generate" ? <GenerateView status={status} presets={presets} characterSets={characterSets} reloadCharacterSets={reloadCharacterSets} qualityPresets={qualityPresets} reloadQualityPresets={reloadQualityPresets} notify={notify} generationDraft={generationDraft} onGenerationDraftChange={changeGenerationDraft} syncStatus={draftSyncState} initialSource={editSource} onInitialSourceConsumed={() => setEditSource(null)} onSubmitted={submitNotice} /> : null}
           {tab === "gallery" ? <GalleryView refreshSignal={refreshSignal} onEdit={editImage} onReuse={reuseImage} onChanged={markChanged} notify={notify} /> : null}
           {tab === "presets" ? <PresetsView presets={presets} reload={reloadPresets} notify={notify} /> : null}
-          {tab === "info" ? <InfoView /> : null}
+          {tab === "info" ? <InfoView qualityPresets={qualityPresets} reloadQualityPresets={reloadQualityPresets} notify={notify} /> : null}
           {tab === "stats" ? <StatsView refreshSignal={refreshSignal} /> : null}
           {tab === "settings" ? <SettingsView status={status} reloadStatus={reloadStatus} notify={notify} fontId={fontId} onFontChange={setFontId} /> : null}
           <JobsPanel refreshSignal={jobSignal} onGalleryChanged={markChanged} />

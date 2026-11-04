@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Check, Copy, X } from "lucide-react";
+import { Check, Copy, Save, X } from "lucide-react";
 import type { ImageInfo } from "../types";
 
 interface ImageInfoCardProps {
   info: ImageInfo;
   fileName: string;
   onClose: () => void;
+  onSaveQualityPreset?: () => void;
 }
 
 async function copyText(text: string): Promise<boolean> {
@@ -50,7 +51,7 @@ function exposure(seconds: number): string {
   return seconds >= 1 ? `${seconds}초` : `1/${Math.round(1 / seconds)}초`;
 }
 
-export function ImageInfoCard({ info, fileName, onClose }: ImageInfoCardProps) {
+export function ImageInfoCard({ info, fileName, onClose, onSaveQualityPreset }: ImageInfoCardProps) {
   const generation = info.generation;
   const camera = info.camera;
   const params = generation?.parameters ?? {};
@@ -112,6 +113,11 @@ export function ImageInfoCard({ info, fileName, onClose }: ImageInfoCardProps) {
           ))}
           {settingChips.length ? (
             <div className="image-info-chips">{settingChips.map((chip) => <span className="chip" key={chip}>{chip}</span>)}</div>
+          ) : null}
+          {onSaveQualityPreset ? (
+            <div className="image-info-actions">
+              <button type="button" className="button small" onClick={onSaveQualityPreset}><Save aria-hidden="true" />품질 프리셋으로 저장</button>
+            </div>
           ) : null}
         </>
       ) : null}

@@ -1,7 +1,7 @@
 {
   "name": "novelai-lan-studio-frontend",
   "private": true,
-  "version": "1.9.0",
+  "version": "1.9.1",
   "type": "module",
   "scripts": {
     "test": "node --experimental-strip-types --test tests/*.test.mjs",

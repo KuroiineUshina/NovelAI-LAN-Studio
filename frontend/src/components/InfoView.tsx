@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { ScanText, Upload } from "lucide-react";
-import { errorMessage, uploadFile } from "../api";
-import type { ImageInfo } from "../types";
+import { ScanText, Upload, X } from "lucide-react";
+import { api, errorMessage, uploadFile } from "../api";
+import type { ImageInfo, QualityPromptPreset } from "../types";
 import { ImageInfoCard } from "./ImageInfoCard";
 import "../info.css";
 
@@ -20,8 +20,23 @@ function imageFile(items: ArrayLike<DataTransferItem | File> | null | undefined)
   return null;
 }
 
-export function InfoView() {
+interface InfoViewProps {
+  qualityPresets: QualityPromptPreset[];
+  reloadQualityPresets: () => Promise<void>;
+  notify: (message: string) => void;
+}
+
+interface PresetDraft {
+  name: string;
+  prompt: string;
+  negative: string;
+}
+
+export function InfoView({ qualityPresets, reloadQualityPresets, notify }: InfoViewProps) {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
+  const [presetDraft, setPresetDraft] = useState<PresetDraft | null>(null);
+  const [presetSaving, setPresetSaving] = useState(false);
+  const [presetError, setPresetError] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [dragging, setDragging] = useState(false);
@@ -55,6 +70,42 @@ export function InfoView() {
     if (!loaded) return;
     return () => URL.revokeObjectURL(loaded.previewUrl);
   }, [loaded]);
+
+  const openPresetSave = () => {
+    const generation = loaded?.info.generation;
+    if (!loaded || !generation) return;
+    setPresetError("");
+    setPresetDraft({
+      name: loaded.name.replace(/\.[^.]+$/, "").slice(0, 80),
+      prompt: generation.prompt,
+      negative: generation.negative_prompt,
+    });
+  };
+
+  const savePreset = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!presetDraft) return;
+    setPresetSaving(true);
+    setPresetError("");
+    try {
+      const created = await api<QualityPromptPreset>("/api/quality-presets", {
+        method: "POST",
+        body: JSON.stringify({
+          name: presetDraft.name.trim(),
+          prompt: presetDraft.prompt.trim(),
+          negative_prompt: presetDraft.negative.trim(),
+          sort_order: qualityPresets.length * 10,
+        }),
+      });
+      await reloadQualityPresets();
+      setPresetDraft(null);
+      notify(`‘${created.name}’ 프리셋을 저장했어요`);
+    } catch (saveError) {
+      setPresetError(errorMessage(saveError));
+    } finally {
+      setPresetSaving(false);
+    }
+  };
 
   return (
     <div className="page narrow info-view">
@@ -97,7 +148,45 @@ export function InfoView() {
               {loaded.info.image.width} × {loaded.info.image.height}{loaded.info.image.format ? ` · ${loaded.info.image.format}` : ""}
             </figcaption>
           </figure>
-          <ImageInfoCard info={loaded.info} fileName={loaded.name} onClose={() => setLoaded(null)} />
+          <ImageInfoCard
+            info={loaded.info}
+            fileName={loaded.name}
+            onClose={() => setLoaded(null)}
+            onSaveQualityPreset={loaded.info.generation ? openPresetSave : undefined}
+          />
+        </div>
+      ) : null}
+
+      {presetDraft ? (
+        <div className="modal-backdrop" role="presentation" onMouseDown={() => setPresetDraft(null)}>
+          <form
+            className="modal-form quality-preset-modal info-preset-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="품질 프롬프트 프리셋 저장"
+            onMouseDown={(event) => event.stopPropagation()}
+            onSubmit={(event) => void savePreset(event)}
+          >
+            <button type="button" className="icon-button modal-close" onClick={() => setPresetDraft(null)} aria-label="닫기"><X aria-hidden="true" /></button>
+            <h2>품질 프리셋 저장</h2>
+            <label className="field">
+              <span className="field-label">이름</span>
+              <input autoFocus required maxLength={80} value={presetDraft.name} onChange={(event) => setPresetDraft({ ...presetDraft, name: event.target.value })} />
+            </label>
+            <label className="field">
+              <span className="field-label">포지티브</span>
+              <textarea className="prompt-textarea" required value={presetDraft.prompt} onChange={(event) => setPresetDraft({ ...presetDraft, prompt: event.target.value })} rows={6} />
+            </label>
+            <label className="field">
+              <span className="field-label">네거티브</span>
+              <textarea className="prompt-textarea" value={presetDraft.negative} onChange={(event) => setPresetDraft({ ...presetDraft, negative: event.target.value })} rows={4} />
+            </label>
+            {presetError ? <p className="error-message" role="alert">{presetError}</p> : null}
+            <div className="form-actions">
+              <button type="button" className="button secondary" onClick={() => setPresetDraft(null)}>취소</button>
+              <button type="submit" className="button primary" disabled={presetSaving || !presetDraft.name.trim() || !presetDraft.prompt.trim()}>{presetSaving ? "저장 중…" : "저장"}</button>
+            </div>
+          </form>
         </div>
       ) : null}
     </div>

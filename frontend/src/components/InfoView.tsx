@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { ScanText, Upload, X } from "lucide-react";
 import { api, errorMessage, uploadFile } from "../api";
-import type { ImageInfo, QualityPromptPreset } from "../types";
+import type { ImageInfo, QualityPresetSettings, QualityPromptPreset } from "../types";
+import { settingsChips, settingsFromParameters } from "../qualityPresetSettings";
 import { ImageInfoCard } from "./ImageInfoCard";
 import "../info.css";
 
@@ -30,6 +31,8 @@ interface PresetDraft {
   name: string;
   prompt: string;
   negative: string;
+  settings: QualityPresetSettings;
+  includeSettings: boolean;
 }
 
 export function InfoView({ qualityPresets, reloadQualityPresets, notify }: InfoViewProps) {
@@ -75,10 +78,17 @@ export function InfoView({ qualityPresets, reloadQualityPresets, notify }: InfoV
     const generation = loaded?.info.generation;
     if (!loaded || !generation) return;
     setPresetError("");
+    const { sampler, noise_schedule: noiseSchedule, ...portable } = generation.parameters;
+    // WebUI sampler names do not exist on NovelAI, so only NovelAI images carry them over.
+    const settings = settingsFromParameters(
+      generation.source === "novelai" ? { ...portable, sampler, noise_schedule: noiseSchedule } : portable,
+    );
     setPresetDraft({
       name: loaded.name.replace(/\.[^.]+$/, "").slice(0, 80),
       prompt: generation.prompt,
       negative: generation.negative_prompt,
+      settings,
+      includeSettings: Object.keys(settings).length > 0,
     });
   };
 
@@ -94,6 +104,7 @@ export function InfoView({ qualityPresets, reloadQualityPresets, notify }: InfoV
           name: presetDraft.name.trim(),
           prompt: presetDraft.prompt.trim(),
           negative_prompt: presetDraft.negative.trim(),
+          settings: presetDraft.includeSettings ? presetDraft.settings : {},
           sort_order: qualityPresets.length * 10,
         }),
       });
@@ -181,6 +192,18 @@ export function InfoView({ qualityPresets, reloadQualityPresets, notify }: InfoV
               <span className="field-label">네거티브</span>
               <textarea className="prompt-textarea" value={presetDraft.negative} onChange={(event) => setPresetDraft({ ...presetDraft, negative: event.target.value })} rows={4} />
             </label>
+            {Object.keys(presetDraft.settings).length ? (
+              <>
+                <label className="switch">
+                  <input type="checkbox" checked={presetDraft.includeSettings} onChange={(event) => setPresetDraft({ ...presetDraft, includeSettings: event.target.checked })} />
+                  <span className="switch-track" aria-hidden="true" />
+                  <span className="switch-label"><strong>생성 설정 포함</strong></span>
+                </label>
+                {presetDraft.includeSettings ? (
+                  <div className="image-info-chips">{settingsChips(presetDraft.settings).map((chip) => <span className="chip" key={chip}>{chip}</span>)}</div>
+                ) : null}
+              </>
+            ) : null}
             {presetError ? <p className="error-message" role="alert">{presetError}</p> : null}
             <div className="form-actions">
               <button type="button" className="button secondary" onClick={() => setPresetDraft(null)}>취소</button>

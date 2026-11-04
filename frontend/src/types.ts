@@ -137,12 +137,22 @@ export interface ClaudeIntegrationStatus {
   last_checked_at: string;
 }
 
+export interface QualityPresetSettings {
+  steps?: number;
+  guidance?: number;
+  guidance_rescale?: number;
+  sampler?: string;
+  noise_schedule?: NoiseSchedule;
+}
+
 export interface QualityPromptPreset {
   id: string;
   name: string;
   prompt: string;
   /** Empty when the preset does not carry a quality negative. */
   negative_prompt: string;
+  /** Generation settings the preset manages; missing keys leave the draft alone. */
+  settings: QualityPresetSettings;
   sort_order: number;
   created_at: string;
   updated_at: string;

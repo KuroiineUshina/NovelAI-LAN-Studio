@@ -46,12 +46,23 @@ class StorageDirectoryInput(BaseModel):
         return value.strip()
 
 
+class QualityPresetSettings(BaseModel):
+    """Generation settings a quality preset carries; a missing value leaves the draft alone."""
+
+    steps: int | None = Field(default=None, ge=1, le=50)
+    guidance: float | None = Field(default=None, ge=0.1, le=20)
+    guidance_rescale: float | None = Field(default=None, ge=0, le=1)
+    sampler: str | None = Field(default=None, min_length=1, max_length=80)
+    noise_schedule: NoiseSchedule | None = None
+
+
 class QualityPromptPresetInput(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     prompt: str = Field(min_length=1, max_length=32_000)
     # Empty means "this preset does not manage the quality negative".
     negative_prompt: str = Field(default="", max_length=32_000)
     sort_order: int = Field(default=0, ge=-10_000, le=10_000)
+    settings: QualityPresetSettings = Field(default_factory=QualityPresetSettings)
 
     @field_validator("name", "prompt", "negative_prompt")
     @classmethod

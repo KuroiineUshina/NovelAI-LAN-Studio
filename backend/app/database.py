@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS quality_prompt_presets (
     name TEXT NOT NULL UNIQUE COLLATE NOCASE,
     prompt TEXT NOT NULL,
     negative_prompt TEXT NOT NULL DEFAULT '',
+    settings_json TEXT NOT NULL DEFAULT '{}',
     sort_order INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -250,6 +251,10 @@ class Database:
             if "negative_prompt" not in preset_columns:
                 connection.execute(
                     "ALTER TABLE quality_prompt_presets ADD COLUMN negative_prompt TEXT NOT NULL DEFAULT ''"
+                )
+            if "settings_json" not in preset_columns:
+                connection.execute(
+                    "ALTER TABLE quality_prompt_presets ADD COLUMN settings_json TEXT NOT NULL DEFAULT '{}'"
                 )
             image_columns = {
                 row["name"] for row in connection.execute("PRAGMA table_info(images)").fetchall()
@@ -695,20 +700,37 @@ class Database:
             )
             connection.commit()
 
+    @staticmethod
+    def _quality_preset(row: sqlite3.Row | None) -> dict[str, Any] | None:
+        if row is None:
+            return None
+        item = dict(row)
+        try:
+            settings = json.loads(item.pop("settings_json", "") or "{}")
+        except json.JSONDecodeError:
+            settings = {}
+        item["settings"] = settings if isinstance(settings, dict) else {}
+        return item
+
+    @staticmethod
+    def _quality_settings_json(data: dict[str, Any]) -> str:
+        settings = data.get("settings") or {}
+        return json.dumps({key: value for key, value in settings.items() if value is not None})
+
     def list_quality_prompt_presets(self) -> list[dict[str, Any]]:
         with self.connect() as connection:
             rows = connection.execute(
                 """SELECT * FROM quality_prompt_presets
                    ORDER BY sort_order, name COLLATE NOCASE"""
             ).fetchall()
-        return [dict(row) for row in rows]
+        return [self._quality_preset(row) for row in rows]  # type: ignore[misc]
 
     def get_quality_prompt_preset(self, preset_id: str) -> dict[str, Any] | None:
         with self.connect() as connection:
             row = connection.execute(
                 "SELECT * FROM quality_prompt_presets WHERE id=?", (preset_id,)
             ).fetchone()
-        return self._row(row)
+        return self._quality_preset(row)
 
     def create_quality_prompt_preset(self, data: dict[str, Any]) -> dict[str, Any]:
         preset_id = str(uuid.uuid4())
@@ -717,13 +739,14 @@ class Database:
             try:
                 connection.execute(
                     """INSERT INTO quality_prompt_presets
-                       (id,name,prompt,negative_prompt,sort_order,created_at,updated_at)
-                       VALUES(?,?,?,?,?,?,?)""",
+                       (id,name,prompt,negative_prompt,settings_json,sort_order,created_at,updated_at)
+                       VALUES(?,?,?,?,?,?,?,?)""",
                     (
                         preset_id,
                         data["name"],
                         data["prompt"],
                         data.get("negative_prompt", ""),
+                        self._quality_settings_json(data),
                         data["sort_order"],
                         now,
                         now,
@@ -741,11 +764,12 @@ class Database:
             try:
                 cursor = connection.execute(
                     """UPDATE quality_prompt_presets
-                       SET name=?,prompt=?,negative_prompt=?,sort_order=?,updated_at=? WHERE id=?""",
+                       SET name=?,prompt=?,negative_prompt=?,settings_json=?,sort_order=?,updated_at=? WHERE id=?""",
                     (
                         data["name"],
                         data["prompt"],
                         data.get("negative_prompt", ""),
+                        self._quality_settings_json(data),
                         data["sort_order"],
                         iso(),
                         preset_id,

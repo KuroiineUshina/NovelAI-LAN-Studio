@@ -27,6 +27,7 @@ import {
 import { DEFAULT_DIRECTOR, DirectorPanel } from "./DirectorPanel";
 import { DEFAULT_GENERATION_PARAMETERS } from "../types";
 import { parseRepeatCount } from "../sequentialGeneration";
+import { settingsChips, settingsDiffer, settingsFromParameters } from "../qualityPresetSettings";
 
 const MODES: Array<{ id: GenerationMode; label: string; action: string }> = [
   { id: "txt2img", label: "새 이미지", action: "생성" },
@@ -196,6 +197,7 @@ export function GenerateView({
   const [anlasLoading, setAnlasLoading] = useState(false);
   const [anlasError, setAnlasError] = useState("");
   const [qualityPresetModalOpen, setQualityPresetModalOpen] = useState(false);
+  const [qualityPresetIncludeSettings, setQualityPresetIncludeSettings] = useState(true);
   const [qualityPresetName, setQualityPresetName] = useState("");
   const [qualityPresetSaving, setQualityPresetSaving] = useState(false);
   const [qualityPresetError, setQualityPresetError] = useState("");
@@ -227,6 +229,7 @@ export function GenerateView({
     && (
       selectedQualityPreset.prompt !== qualityPrompt
       || (Boolean(selectedQualityPreset.negative_prompt) && selectedQualityPreset.negative_prompt !== qualityNegativePrompt)
+      || settingsDiffer(selectedQualityPreset.settings, parameters)
     ),
   );
 
@@ -533,6 +536,7 @@ export function GenerateView({
       // Presets saved before negatives were supported leave the current negative alone.
       quality_negative_prompt: preset.negative_prompt || generationDraft.quality_negative_prompt,
       quality_preset_id: preset.id,
+      parameters: { ...parameters, ...preset.settings },
     });
   };
 
@@ -557,6 +561,7 @@ export function GenerateView({
           name: qualityPresetName.trim(),
           prompt: qualityPrompt.trim(),
           negative_prompt: qualityNegativePrompt.trim(),
+          settings: qualityPresetIncludeSettings ? settingsFromParameters(parameters) : {},
           sort_order: qualityPresets.length * 10,
         }),
       });
@@ -581,6 +586,7 @@ export function GenerateView({
           name: selectedQualityPreset.name,
           prompt: qualityPrompt.trim(),
           negative_prompt: qualityNegativePrompt.trim(),
+          settings: settingsFromParameters(parameters),
           sort_order: selectedQualityPreset.sort_order,
         }),
       });
@@ -1135,6 +1141,14 @@ export function GenerateView({
             </label>
             <p className="preset-preview">{qualityPrompt.trim()}</p>
             {qualityNegativePrompt.trim() ? <p className="preset-preview negative"><span className="caption">네거티브</span>{qualityNegativePrompt.trim()}</p> : null}
+            <label className="switch">
+              <input type="checkbox" checked={qualityPresetIncludeSettings} onChange={(event) => setQualityPresetIncludeSettings(event.target.checked)} />
+              <span className="switch-track" aria-hidden="true" />
+              <span className="switch-label"><strong>생성 설정 포함</strong></span>
+            </label>
+            {qualityPresetIncludeSettings ? (
+              <div className="preset-settings-chips">{settingsChips(settingsFromParameters(parameters)).map((chip) => <span className="chip" key={chip}>{chip}</span>)}</div>
+            ) : null}
             {qualityPresetError ? <p className="error-message" role="alert">{qualityPresetError}</p> : null}
             <div className="form-actions">
               <button type="button" className="button secondary" onClick={() => setQualityPresetModalOpen(false)}>취소</button>

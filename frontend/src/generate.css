@@ -203,3 +203,4 @@
   .generate-submit kbd { display: none; }
   .inpaint-history { margin-left: 0; }
 }
+.preset-settings-chips { display: flex; flex-wrap: wrap; gap: var(--x1_5); }

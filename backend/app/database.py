@@ -1027,6 +1027,13 @@ class Database:
         item["character_snapshot"] = json.loads(item.pop("character_snapshot_json"))
         return item
 
+    def list_job_images(self, job_id: str) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM images WHERE job_id=? ORDER BY created_at, rowid", (job_id,)
+            ).fetchall()
+            return [dict(row) for row in rows]
+
     def get_image(self, image_id: str) -> dict[str, Any] | None:
         with self.connect() as connection:
             row = connection.execute("SELECT * FROM images WHERE id=?", (image_id,)).fetchone()
@@ -1040,7 +1047,10 @@ class Database:
         nsfw: bool | None = None,
         page_size: int = 50,
     ) -> dict[str, Any]:
-        conditions: list[str] = []
+        # Images generated for MCP callers live in their own output folders.
+        conditions: list[str] = [
+            "COALESCE(json_extract(i.settings_json,'$.hidden_from_gallery'),0)=0"
+        ]
         params: list[Any] = []
         if favorite is True:
             conditions.append("i.favorite_at IS NOT NULL")
@@ -1171,7 +1181,8 @@ class Database:
                 (start.isoformat(),),
             ).fetchone()[0]
             temporary = connection.execute(
-                "SELECT COUNT(*) FROM images i WHERE i.favorite_at IS NULL"
+                "SELECT COUNT(*) FROM images i WHERE i.favorite_at IS NULL "
+                "AND COALESCE(json_extract(i.settings_json,'$.hidden_from_gallery'),0)=0"
             ).fetchone()[0]
             favorites = connection.execute(
                 "SELECT COUNT(*) FROM images i WHERE i.favorite_at IS NOT NULL"

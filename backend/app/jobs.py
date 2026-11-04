@@ -242,6 +242,11 @@ class JobManager:
                             **request_data["parameters"],
                             "nsfw_enabled": bool(request_data.get("nsfw_enabled")),
                             **(
+                                {"hidden_from_gallery": True}
+                                if request_data.get("hidden_from_gallery")
+                                else {}
+                            ),
+                            **(
                                 {"nsfw_prompt": request_data["nsfw_prompt"]}
                                 if request_data.get("nsfw_enabled") and request_data.get("nsfw_prompt")
                                 else {}

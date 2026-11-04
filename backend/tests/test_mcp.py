@@ -202,7 +202,7 @@ def test_mcp_refuses_to_overwrite_a_newer_shared_draft(tmp_path: Path):
         assert client.get("/api/generation-draft").json()["description_prompt"] == "모바일에서 더 최신으로 저장한 장면"
 
 
-def test_mcp_lists_only_prompt_tools(tmp_path: Path):
+def test_mcp_lists_prompt_and_explicit_generation_tools(tmp_path: Path):
     app = create_app(
         data_dir=tmp_path / "mcp-tools-data",
         start_workers=False,
@@ -220,6 +220,9 @@ def test_mcp_lists_only_prompt_tools(tmp_path: Path):
             "get_prompt_context",
             "apply_description_prompts",
             "apply_quality_prompts",
+            "generate_images",
+            "remove_background",
+            "collect_generation_outputs",
         }
 
 

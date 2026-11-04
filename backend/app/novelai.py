@@ -19,6 +19,59 @@ IMAGE_API_BASE = "https://image.novelai.net"
 CHARACTER_REFERENCE_CANVASES = ((1024, 1536), (1536, 1024), (1472, 1472))
 
 
+def infill_mask(mask_bytes: bytes, width: int, height: int) -> bytes:
+    """Shape a mask the way NovelAI's V4+ inpainting models expect it.
+
+    The web client snaps the mask to an 8-pixel grid and sends white, opaque
+    pixels for the area to repaint and transparent black everywhere else.
+    Sending a plain RGB mask makes the masked area come back as noise.
+    """
+    from PIL import Image
+
+    grid = (max(1, -(-width // 8)), max(1, -(-height // 8)))
+    with Image.open(io.BytesIO(mask_bytes)) as source:
+        if source.mode in {"RGBA", "LA", "PA"}:
+            painted = source.convert("RGBA")
+            luminance = painted.convert("L")
+            alpha = painted.getchannel("A")
+            selected = Image.composite(luminance, Image.new("L", painted.size, 0), alpha)
+        else:
+            selected = source.convert("L")
+    selected = selected.resize((width, height), Image.Resampling.NEAREST)
+    # Any painted pixel inside a cell marks the whole cell, so thin strokes survive.
+    cells = selected.point(lambda value: 255 if value > 127 else 0).resize(grid, Image.Resampling.BOX)
+    cells = cells.point(lambda value: 255 if value > 0 else 0)
+    alpha = cells.resize((grid[0] * 8, grid[1] * 8), Image.Resampling.NEAREST).crop((0, 0, width, height))
+    result = Image.merge("RGBA", (alpha, alpha, alpha, alpha))
+    output = io.BytesIO()
+    result.save(output, format="PNG")
+    return output.getvalue()
+
+
+def paste_unmasked(source: bytes, generated: bytes, mask_bytes: bytes) -> bytes:
+    """Put the original pixels back outside the mask, like NovelAI's web client.
+
+    The inpainting model re-encodes the whole picture, so without this every
+    pass drifts the colors of areas the user never touched.
+    """
+    from PIL import Image, ImageChops, ImageFilter
+
+    with Image.open(io.BytesIO(generated)) as result_image:
+        result = result_image.convert("RGBA")
+    with Image.open(io.BytesIO(source)) as source_image:
+        original = source_image.convert("RGBA")
+    if original.size != result.size:
+        original = original.resize(result.size, Image.Resampling.LANCZOS)
+    with Image.open(io.BytesIO(infill_mask(mask_bytes, *result.size))) as snapped:
+        alpha = snapped.getchannel("A")
+    # Feather only outward so the repainted area itself stays fully generated.
+    feather = alpha.filter(ImageFilter.MaxFilter(9)).filter(ImageFilter.GaussianBlur(4))
+    alpha = ImageChops.lighter(alpha, feather)
+    output = io.BytesIO()
+    Image.composite(result, original, alpha).save(output, format="PNG")
+    return output.getvalue()
+
+
 def letterbox_reference(image_bytes: bytes) -> bytes:
     from PIL import Image
 
@@ -409,15 +462,20 @@ class NovelAIClient:
         elif mode == "inpaint":
             action = "infill"
             model = MODELS[model].inpaint_id
+            strength = float(parameters["strength"])
             request_parameters.update(
                 {
                     "image": base64.b64encode(source or b"").decode("ascii"),
-                    "mask": base64.b64encode(mask or b"").decode("ascii"),
-                    "strength": parameters["strength"],
-                    "noise": parameters["noise"],
+                    "mask": base64.b64encode(
+                        infill_mask(mask or b"", parameters["width"], parameters["height"])
+                    ).decode("ascii"),
                     "add_original_image": False,
+                    "inpaintImg2ImgStrength": strength,
+                    "extra_noise_seed": seed if seed is not None else 0,
                 }
             )
+            if strength < 1:
+                request_parameters["img2img"] = {"strength": strength, "color_correct": True}
         return {
             "input": base_prompt,
             "model": model,
@@ -536,4 +594,10 @@ class NovelAIClient:
             payload = response.json()
         except ValueError as exc:
             raise NovelAIError("INVALID_RESPONSE", "NovelAI 응답이 JSON 형식이 아닙니다.") from exc
-        return self._decode_images(payload)
+        images = self._decode_images(payload)
+        if request_data["mode"] == "inpaint" and source and mask:
+            images = [
+                GeneratedImage(data=paste_unmasked(source, item.data, mask), seed=item.seed)
+                for item in images
+            ]
+        return images

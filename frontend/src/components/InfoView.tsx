@@ -1,0 +1,105 @@
+import { useCallback, useEffect, useState } from "react";
+import { ScanText, Upload } from "lucide-react";
+import { errorMessage, uploadFile } from "../api";
+import type { ImageInfo } from "../types";
+import { ImageInfoCard } from "./ImageInfoCard";
+import "../info.css";
+
+interface Loaded {
+  info: ImageInfo;
+  name: string;
+  previewUrl: string;
+}
+
+function imageFile(items: ArrayLike<DataTransferItem | File> | null | undefined): File | null {
+  if (!items) return null;
+  for (const item of Array.from(items)) {
+    const file = item instanceof File ? item : item.kind === "file" ? item.getAsFile() : null;
+    if (file && file.type.startsWith("image/")) return file;
+  }
+  return null;
+}
+
+export function InfoView() {
+  const [loaded, setLoaded] = useState<Loaded | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [dragging, setDragging] = useState(false);
+
+  const read = useCallback(async (file: File) => {
+    setBusy(true);
+    setError("");
+    try {
+      const info = await uploadFile<ImageInfo>("/api/image-info", file);
+      setLoaded({ info, name: file.name || "붙여 넣은 이미지", previewUrl: URL.createObjectURL(file) });
+    } catch (readError) {
+      setError(errorMessage(readError));
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const onPaste = (event: ClipboardEvent) => {
+      const file = imageFile(event.clipboardData?.items);
+      if (!file) return;
+      event.preventDefault();
+      void read(file);
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [read]);
+
+  // Release each preview URL once it is replaced or the view closes.
+  useEffect(() => {
+    if (!loaded) return;
+    return () => URL.revokeObjectURL(loaded.previewUrl);
+  }, [loaded]);
+
+  return (
+    <div className="page narrow info-view">
+      <header className="page-header">
+        <h1>EXIF</h1>
+      </header>
+      {error ? <p className="error-message" role="alert">{error}</p> : null}
+
+      <label
+        className={`info-drop${dragging ? " dragging" : ""}${loaded ? " compact" : ""}`}
+        onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(event) => {
+          event.preventDefault();
+          setDragging(false);
+          const file = imageFile(event.dataTransfer.files);
+          if (file) void read(file);
+        }}
+        aria-busy={busy}
+      >
+        {busy ? <span className="spinner" aria-hidden="true" /> : loaded ? <Upload aria-hidden="true" /> : <ScanText aria-hidden="true" />}
+        <strong>{loaded ? "다른 이미지" : "이미지 선택"}</strong>
+        <small>끌어 놓기 · 붙여 넣기</small>
+        <input
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            if (file) void read(file);
+          }}
+        />
+      </label>
+
+      {loaded ? (
+        <div className="info-result">
+          <figure className="info-preview">
+            <img src={loaded.previewUrl} alt={loaded.name} />
+            <figcaption className="caption">
+              {loaded.info.image.width} × {loaded.info.image.height}{loaded.info.image.format ? ` · ${loaded.info.image.format}` : ""}
+            </figcaption>
+          </figure>
+          <ImageInfoCard info={loaded.info} fileName={loaded.name} onClose={() => setLoaded(null)} />
+        </div>
+      ) : null}
+    </div>
+  );
+}

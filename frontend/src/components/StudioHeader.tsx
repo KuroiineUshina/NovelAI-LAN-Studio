@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { ChartColumn, ChevronDown, Copy, Images, KeyRound, Moon, Settings, ShieldCheck, Sparkles, Sun, UsersRound } from "lucide-react";
+import { ChartColumn, ChevronDown, Copy, Images, KeyRound, Moon, ScanText, Settings, ShieldCheck, Sparkles, Sun, UsersRound } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { AppStatus, Tab } from "../types";
 
@@ -7,6 +7,7 @@ const NAVIGATION: Array<{ id: Tab; label: string; icon: LucideIcon }> = [
   { id: "generate", label: "생성", icon: Sparkles },
   { id: "gallery", label: "갤러리", icon: Images },
   { id: "presets", label: "인물", icon: UsersRound },
+  { id: "info", label: "EXIF", icon: ScanText },
   { id: "stats", label: "통계", icon: ChartColumn },
   { id: "settings", label: "설정", icon: Settings },
 ];

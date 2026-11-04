@@ -1,4 +1,4 @@
-export type Tab = "generate" | "gallery" | "presets" | "stats" | "settings";
+export type Tab = "generate" | "gallery" | "presets" | "info" | "stats" | "settings";
 export type GenerationMode = "txt2img" | "img2img" | "inpaint" | "upscale" | "director";
 export type DirectorTool = "bg-removal" | "lineart" | "sketch" | "colorize" | "emotion" | "declutter" | "declutter-keep-bubbles";
 export type ReferenceKind = "character" | "style" | "character&style";
@@ -308,4 +308,41 @@ export interface ImageReuseOptions {
   seed: boolean;
   count: boolean;
   strength_noise: boolean;
+}
+
+export interface ImageInfoCharacter {
+  prompt: string;
+  negative_prompt: string;
+  center: { x: number; y: number } | null;
+}
+
+export interface ImageGenerationInfo {
+  source: "novelai" | "webui";
+  prompt: string;
+  negative_prompt: string;
+  characters: ImageInfoCharacter[];
+  parameters: Partial<Pick<GenerationParameters, "width" | "height" | "steps" | "guidance" | "guidance_rescale" | "sampler" | "noise_schedule" | "seed" | "strength" | "noise">>;
+  model: string | null;
+  model_label: string | null;
+  request_type: string | null;
+}
+
+export interface ImageCameraInfo {
+  make?: string;
+  model?: string;
+  taken_at?: string;
+  modified_at?: string;
+  lens?: string;
+  exposure_time?: number;
+  f_number?: number;
+  iso?: number;
+  focal_length?: number;
+  software?: string;
+  has_location?: boolean;
+}
+
+export interface ImageInfo {
+  image: { width: number; height: number; format: string | null };
+  generation: ImageGenerationInfo | null;
+  camera: ImageCameraInfo | null;
 }

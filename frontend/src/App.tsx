@@ -6,6 +6,7 @@ import { JobsPanel } from "./components/JobsPanel";
 import { PresetsView } from "./components/PresetsView";
 import { SettingsView } from "./components/SettingsView";
 import { StatsView } from "./components/StatsView";
+import { InfoView } from "./components/InfoView";
 import { DeviceApprovalView } from "./components/DeviceApprovalView";
 import { StudioHeader } from "./components/StudioHeader";
 import { APP_FONT_STORAGE_KEY, getInitialAppFont } from "./fonts";
@@ -469,6 +470,7 @@ export default function App() {
           {tab === "generate" ? <GenerateView status={status} presets={presets} characterSets={characterSets} reloadCharacterSets={reloadCharacterSets} qualityPresets={qualityPresets} reloadQualityPresets={reloadQualityPresets} notify={notify} generationDraft={generationDraft} onGenerationDraftChange={changeGenerationDraft} syncStatus={draftSyncState} initialSource={editSource} onInitialSourceConsumed={() => setEditSource(null)} onSubmitted={submitNotice} /> : null}
           {tab === "gallery" ? <GalleryView refreshSignal={refreshSignal} onEdit={editImage} onReuse={reuseImage} onChanged={markChanged} notify={notify} /> : null}
           {tab === "presets" ? <PresetsView presets={presets} reload={reloadPresets} notify={notify} /> : null}
+          {tab === "info" ? <InfoView /> : null}
           {tab === "stats" ? <StatsView refreshSignal={refreshSignal} /> : null}
           {tab === "settings" ? <SettingsView status={status} reloadStatus={reloadStatus} notify={notify} fontId={fontId} onFontChange={setFontId} /> : null}
           <JobsPanel refreshSignal={jobSignal} onGalleryChanged={markChanged} />

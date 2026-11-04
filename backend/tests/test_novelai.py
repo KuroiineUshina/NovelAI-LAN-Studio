@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import base64
+import io
 
 import httpx
 import pytest
 import respx
+from PIL import Image
 
-from backend.app.novelai import NovelAIClient, NovelAIError
+from backend.app.novelai import NovelAIClient, NovelAIError, infill_mask, paste_unmasked
 
 
 def request_data(mode: str = "txt2img") -> dict:
@@ -75,7 +77,16 @@ def test_native_character_payload_and_modes(icon_bytes: bytes):
     inpaint_payload = NovelAIClient.build_generation_payload(request_data("inpaint"), icon_bytes, icon_bytes)
     assert inpaint_payload["action"] == "infill"
     assert inpaint_payload["model"] == "nai-diffusion-5-full-inpainting"
-    assert base64.b64decode(inpaint_payload["parameters"]["mask"]) == icon_bytes
+    inpaint_params = inpaint_payload["parameters"]
+    assert "strength" not in inpaint_params and "noise" not in inpaint_params
+    assert inpaint_params["add_original_image"] is False
+    assert inpaint_params["inpaintImg2ImgStrength"] == request_data("inpaint")["parameters"]["strength"]
+    with Image.open(io.BytesIO(base64.b64decode(inpaint_params["mask"]))) as sent_mask:
+        assert sent_mask.mode == "RGBA"
+        assert sent_mask.size == (
+            request_data("inpaint")["parameters"]["width"],
+            request_data("inpaint")["parameters"]["height"],
+        )
 
 
 def test_nsfw_prefix_is_added_only_to_outbound_payload():
@@ -299,3 +310,40 @@ def test_sampler_and_noise_schedule_reach_novelai_and_default_to_consistent_sett
 
     with pytest.raises(ValueError):
         GenerationParameters(noise_schedule="linear")
+
+
+def test_infill_mask_is_grid_snapped_white_on_transparent():
+    mask = Image.new("RGB", (64, 64), (0, 0, 0))
+    mask.putpixel((20, 20), (255, 255, 255))  # a one-pixel stroke still marks its cell
+    for x in range(40, 64):
+        for y in range(40, 64):
+            mask.putpixel((x, y), (255, 255, 255))
+    buffer = io.BytesIO()
+    mask.save(buffer, format="PNG")
+    with Image.open(io.BytesIO(infill_mask(buffer.getvalue(), 64, 64))) as result:
+        assert result.mode == "RGBA"
+        assert result.getpixel((16, 16)) == (255, 255, 255, 255)
+        assert result.getpixel((23, 23)) == (255, 255, 255, 255)
+        assert result.getpixel((24, 24)) == (0, 0, 0, 0)
+        assert result.getpixel((50, 50)) == (255, 255, 255, 255)
+        assert result.getpixel((5, 60)) == (0, 0, 0, 0)
+
+
+def test_inpaint_result_keeps_original_pixels_outside_the_mask():
+    def encoded(image):
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        return buffer.getvalue()
+
+    original = Image.new("RGBA", (64, 64), (200, 120, 80, 255))
+    original.putpixel((2, 2), (0, 0, 0, 0))  # transparency outside the mask survives
+    generated = Image.new("RGB", (64, 64), (10, 200, 30))
+    mask = Image.new("RGB", (64, 64), (0, 0, 0))
+    for x in range(32, 64):
+        for y in range(32, 64):
+            mask.putpixel((x, y), (255, 255, 255))
+    with Image.open(io.BytesIO(paste_unmasked(encoded(original), encoded(generated), encoded(mask)))) as result:
+        assert result.getpixel((5, 5)) == (200, 120, 80, 255)
+        assert result.getpixel((2, 2))[3] == 0
+        assert result.getpixel((48, 48)) == (10, 200, 30, 255)
+        assert result.getpixel((33, 33)) == (10, 200, 30, 255)

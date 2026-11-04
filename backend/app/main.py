@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
+from PIL import Image
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
@@ -45,7 +46,9 @@ from .discord_webhook import (
     validate_discord_webhook_url,
 )
 from .jobs import JobManager, correlation_id
+from .mcp_generation import register_generation_tools
 from .image_export import metadata_free_png
+from .image_info import read_image_info
 from .novelai import NovelAIClient, NovelAIError
 from .schemas import (
     AutostartInput,
@@ -267,8 +270,11 @@ def create_app(
         instructions=(
             "Read and update the shared image-description draft, and update the quality "
             "prompt only when the user explicitly asks. Pass the revision from "
-            "get_prompt_context so another device's edits are never overwritten. Never "
-            "request or expose tokens, webhooks, deletion tools, or unrelated settings."
+            "get_prompt_context so another device's edits are never overwritten. "
+            "generate_images, remove_background and collect_generation_outputs spend Anlas "
+            "or write files: call them only when the user explicitly asks for that tool, never "
+            "as part of prompt drafting. Never request or expose tokens, webhooks, deletion "
+            "tools, or unrelated settings."
         ),
         streamable_http_path="/",
         stateless_http=True,
@@ -1152,6 +1158,16 @@ def create_app(
         )
         return _public_upload(record)
 
+    @app.post("/api/image-info")
+    async def image_info(file: UploadFile = File(...)):
+        data = await file.read(MAX_UPLOAD_BYTES + 1)
+        if len(data) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="이미지는 최대 20MB까지 읽을 수 있어요.")
+        try:
+            return await asyncio.to_thread(read_image_info, data)
+        except (OSError, ValueError, Image.DecompressionBombError) as exc:
+            raise HTTPException(status_code=400, detail="이미지 정보를 읽지 못했어요.") from exc
+
     @app.get("/api/uploads")
     async def list_uploads(state: Services = Depends(svc)):
         return {"items": [_public_upload(item) for item in state.database.list_uploads()]}
@@ -1193,10 +1209,26 @@ def create_app(
     ):
         state.storage.ensure_available()
         state.rate_limiter.check(request)
+        try:
+            job = submit_generation_job(state, body)
+        except LookupError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except OverflowError as exc:
+            raise HTTPException(status_code=429, detail=str(exc)) from exc
+        await state.jobs.enqueue(job["id"])
+        return job
+
+    def submit_generation_job(
+        state: Services, body: GenerationRequest, hidden_from_gallery: bool = False
+    ) -> dict[str, Any]:
+        """Snapshot characters and queue the job; the caller enqueues it."""
+        state.storage.ensure_available()
         presets = state.database.get_presets(body.character_preset_ids)
         if len(presets) != len(body.character_preset_ids):
-            raise HTTPException(status_code=400, detail="선택한 인물 프리셋 중 일부가 없습니다.")
+            raise LookupError("선택한 인물 프리셋 중 일부가 없습니다.")
         payload = body.model_dump()
+        if hidden_from_gallery:
+            payload["hidden_from_gallery"] = True
         if payload["parameters"]["seed"] is None:
             payload["random_seed_each_request"] = True
             payload["parameters"]["seed"] = secrets.randbits(32)
@@ -1213,12 +1245,7 @@ def create_app(
             }
             for preset in presets
         ]
-        try:
-            job = state.database.create_job(payload, correlation_id())
-        except OverflowError as exc:
-            raise HTTPException(status_code=429, detail=str(exc)) from exc
-        await state.jobs.enqueue(job["id"])
-        return job
+        return state.database.create_job(payload, correlation_id())
 
     @app.get("/api/jobs")
     async def list_jobs(limit: int = Query(default=30, ge=1, le=100), state: Services = Depends(svc)):
@@ -1441,6 +1468,18 @@ def create_app(
     @app.get("/api/stats")
     async def statistics(state: Services = Depends(svc)):
         return state.database.statistics()
+
+    async def submit_mcp_generation(body: GenerationRequest) -> dict[str, Any]:
+        job = await asyncio.to_thread(submit_generation_job, services, body, True)
+        await services.jobs.enqueue(job["id"])
+        return job
+
+    register_generation_tools(
+        mcp_server,
+        services,
+        submit_mcp_generation,
+        lambda: load_generation_draft(services),
+    )
 
     app.mount(
         "/mcp",

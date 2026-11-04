@@ -10,7 +10,7 @@ android {
         applicationId = "com.novelai.lanstudio"
         minSdk = 26
         targetSdk = 36
-        versionCode = 32
+        versionCode = 33
         versionName = rootProject.file("../VERSION").readText().trim()
     }
 
